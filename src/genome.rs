@@ -1,7 +1,21 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, fmt::Display};
 
 use crate::prelude::*;
 
+/// A list of chromosomes that make up a specific specimen.
+/// 
+/// # Examples
+/// 
+/// ```
+/// let animal = Genome::new(vec![
+///     ("eyes", "green", Gene::new(0.5)),
+///     ("eyes", "vision_quality", Gene::new(0.9)),
+///     ("behavior", "aggressiveness", Gene::new(0.2)),
+///     ("behavior", "food_motivation", Gene::new(1.0))
+/// ]);
+/// 
+/// let alpha_specimen = animal.simulate(100, survivability_evaluator);
+/// ```
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Genome {
     chromosomes: HashMap<String, Chromosome>,
@@ -15,7 +29,7 @@ impl Genome {
     /// ```
     /// use genetic_optimization::prelude::*;
     /// 
-    /// let genome = Genome::new(vec!["chromosome_label", "gene_label", Gene::default()]);
+    /// let genome = Genome::new(vec![("chromosome_label", "gene_label", Gene::default())]);
     /// ```
     #[inline]
     pub fn new(genes: Vec<(&str, &str, Gene)>) -> Self {
@@ -28,14 +42,66 @@ impl Genome {
         genome
     }
 
+    /// Returns the specified chromosome, if it exists.
+    /// 
+    /// # Examples
+    /// 
+    /// ```
+    /// use genetic_optimization::prelude::*;
+    /// 
+    /// let genome = Genome::new(vec![("chromosome_label", "gene_label", Gene::default())]);
+    /// let chromo = genome.chromosome("chromosome_label");
+    /// assert!(chromo.is_some());
+    /// ```
     #[inline]
+    pub fn chromosome(&self, chromo_name: &str) -> Option<&Chromosome> {
+        self.chromosomes.get(chromo_name)
+    }
+
+    /// Returns the specified gene, if it exists.
+    /// 
+    /// # Examples
+    /// 
+    /// ```
+    /// use genetic_optimization::prelude::*;
+    /// 
+    /// let genome = Genome::new(vec![("chromosome_label", "gene_label", Gene::default())]);
+    /// let gene = genome.gene("chromosome_label", "gene_label");
+    /// assert!(gene.is_some());
+    /// ```
+    #[inline]
+    pub fn gene(&self, chromo_name: &str, gene_name: &str) -> Option<&Gene> {
+        self.chromosome(chromo_name)?.gene(gene_name)
+    }
+
     /// Returns a reference to `self.chromosomes`.
+    /// 
+    /// # Examples
+    /// 
+    /// ```
+    /// use genetic_optimization::prelude::*;
+    /// 
+    /// let genome = Genome::new(vec![("chromosome_label", "gene_label", Gene::default())]);
+    /// let chromosomes = genome.chromosomes();
+    /// assert!(chromosomes.contains_key("chromosome_label"));
+    /// ```
+    #[inline]
     pub fn chromosomes(&self) -> &HashMap<String, Chromosome> {
         &self.chromosomes
     }
-
-    #[inline]
+    
     /// Returns a list of all genes, their labels, and their containers' labels.
+    /// 
+    /// # Examples
+    /// 
+    /// ```
+    /// use genetic_optimization::prelude::*;
+    /// 
+    /// let genome = Genome::new(vec![("chromosome_label", "gene_label", Gene::default())]);
+    /// let genes = genome.genes();
+    /// assert_eq!(genes[0].2.value(), 0.0);
+    /// ```
+    #[inline]
     pub fn genes(&self) -> Vec<(&str, &str, Gene)> {
         let mut genes = Vec::default();
 
@@ -56,7 +122,7 @@ impl Genome {
     /// ```
     /// use genetic_optimization::prelude::*;
     /// 
-    /// let mut genome = Genome::new(vec!["examples", "example1", Gene::default()]);
+    /// let mut genome = Genome::new(vec![("examples", "example1", Gene::default())]);
     /// genome.insert_chromosome("examples2", Chromosome::default());
     /// ```
     #[inline]
@@ -71,7 +137,7 @@ impl Genome {
     /// ```
     /// use genetic_optimization::prelude::*;
     /// 
-    /// let mut genome = Genome::new(vec!["examples", "example1", Gene::default()]);
+    /// let mut genome = Genome::new(vec![("examples", "example1", Gene::default())]);
     /// genome.insert_chromosomes(vec![("examples2", Chromosome::default()), ("examples3", Chromosome::default())]);
     /// ```
     #[inline]
@@ -89,7 +155,7 @@ impl Genome {
     /// use genetic_optimization::prelude::*;
     /// 
     /// let mut genome = Genome::default()
-    /// genome.insert_genes(vec!["chromosome_label", "gene_label", the_gene_itself]);
+    /// genome.insert_genes(vec!["chromosome_label", "gene_label", Gene::default()]);
     /// ```
     #[inline]
     pub fn insert_genes(&mut self, genes: Vec<(&str, &str, Gene)>) {
@@ -102,9 +168,50 @@ impl Genome {
         }
     }
 
-    /// Sets the value of the given gene.
+    /// Sets the value of the specified chromosome.
+    /// 
+    /// # Examples
+    /// 
+    /// ```
+    /// use genetic_optimization::prelude::*;
+    /// 
+    /// let mut genome = Genome::new(vec![("examples", "example1", Gene::default())]);
+    /// let _ = genome.set_chromosome("examples", Chromosome::default());
+    /// assert!(genome.gene("examples", "example1").is_none());
+    /// ```
     #[inline]
-    pub fn set_gene(&mut self, chromo_name: &str, gene_name: &str, gene: Gene) {
-        self.chromosomes.get_mut(chromo_name).unwrap().set_gene(gene_name, gene);
+    pub fn set_chromosome(&mut self, chromo_name: &str, chromo: Chromosome) -> Result<(), &str> {
+        *self.chromosomes.get_mut(chromo_name).ok_or("No chromosome by that name exists")? = chromo;
+
+        Ok(())
+    }
+
+    /// Sets the value of the specified gene.
+    /// 
+    /// # Examples
+    /// 
+    /// ```
+    /// use genetic_optimization::prelude::*;
+    /// 
+    /// let mut genome = Genome::new(vec![("examples", "example1", Gene::new(1.0))]);
+    /// let _ = genome.set_gene("examples", "example1", Gene::default());
+    /// assert_eq!(genome.gene("examples", "example1").unwrap().value(), 0.0);
+    /// ```
+    #[inline]
+    pub fn set_gene(&mut self, chromo_name: &str, gene_name: &str, gene: Gene) -> Result<(), &str> {
+        self.chromosomes.get_mut(chromo_name).ok_or("No chromosome by that name exists")?.set_gene(gene_name, gene)
+    }
+}
+
+impl Display for Genome {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut display_obj: HashMap<String, HashMap<String, f32>> = HashMap::new();
+        for chromo in &self.chromosomes {
+            display_obj.insert(chromo.0.to_string(), HashMap::new());
+            for gene in chromo.1.genes() {
+                display_obj.get_mut(chromo.0).unwrap().insert(gene.0.to_string(), gene.1.value());
+            }
+        }
+        write!(f, "{:#?}", display_obj)
     }
 }
