@@ -49,11 +49,11 @@ impl Gene {
 
     /// Creates a mutated `Gene` from `self`.
     #[inline]
-    pub fn mutate(&self) -> Gene {
+    pub fn mutate(&self, randomness_weight: f32) -> Gene {
         let mut rng = rand::thread_rng();
         let mut gene = self.clone();
 
-        gene.value = 0.25 * (3.0 * self.value + rng.gen_range(self.min..self.max));
+        gene.value = 1.0 / (randomness_weight + 1.0) * (self.value + randomness_weight * rng.gen_range(self.min..self.max));
 
         gene
     }

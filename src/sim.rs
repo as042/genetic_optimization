@@ -2,6 +2,32 @@ use rand::Rng;
 
 use crate::prelude::*;
 
+#[derive(Clone, Copy, Debug, PartialEq, PartialOrd)]
+pub struct SimHyperParams {
+    elitism_survivors: usize,
+    elitism_reproducers: usize,
+    num_random_species: usize,
+
+    crossover_chance_per_gene: f32,
+    offspring_mutation_chance: f32,
+    offspring_mutation_randomness_weight: f32,
+    random_species_randomness_weight: f32,
+}
+
+impl Default for SimHyperParams {
+    fn default() -> Self {
+        Self { 
+            elitism_survivors: 1, 
+            elitism_reproducers: 14, 
+            num_random_species: 8, 
+            crossover_chance_per_gene: 0.1, 
+            offspring_mutation_chance: 0.1, 
+            offspring_mutation_randomness_weight: 0.25, 
+            random_species_randomness_weight: 1.0
+        }
+    }
+}
+
 impl Genome {
     /// Simulates natural selection to optimize `self` for the given task.
     /// 
@@ -51,7 +77,7 @@ impl Genome {
     /// assert_eq!(optimized.genes().len(), genome.genes().len());
     /// ```
     #[inline]
-    pub fn simulate(&self, generations: usize, evaluator: fn(&Genome) -> f32) -> Genome {
+    pub fn simulate(&self, generations: usize, evaluator: fn(&Genome) -> f32, hyper_params: SimHyperParams) -> Genome {
         if generations == 0 { return self.clone(); }
 
         // Generation 1
