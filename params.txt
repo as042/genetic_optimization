@@ -1,0 +1,39 @@
+[chromosomes.recombination.genes.crossover_chance_per_gene]
+value = 0.37169620394706726
+min = 0.0
+max = 1.0
+
+[chromosomes.recombination.genes.offspring_mutation_chance]
+value = 0.1821833699941635
+min = 0.0
+max = 1.0
+
+[chromosomes.recombination.genes.offspring_mutation_randomness_weight]
+value = 0.22685906291007996
+min = 0.0
+max = 1.0
+
+[chromosomes.random_species.genes.random_species_randomness_weight]
+value = 0.7255735397338867
+min = 0.0
+max = 1.0
+
+[chromosomes.species.genes.elitism_survivors]
+value = 18.31950569152832
+min = 0.0
+max = 100.0
+
+[chromosomes.species.genes.random_reproducers]
+value = 44.8438720703125
+min = 0.0
+max = 100.0
+
+[chromosomes.species.genes.num_random_species]
+value = 18.81789207458496
+min = 0.0
+max = 100.0
+
+[chromosomes.species.genes.elitism_reproducers]
+value = 14.844184875488281
+min = 0.0
+max = 20.0

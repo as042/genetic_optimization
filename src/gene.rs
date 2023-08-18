@@ -1,7 +1,8 @@
 use rand::Rng;
+use serde::{Serialize, Deserialize};
 
 /// A specific parameter that will be optimized by the simulation.
-#[derive(Clone, Copy, Debug, Default, PartialEq, PartialOrd)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, PartialOrd, Serialize, Deserialize)]
 pub struct Gene {
     value: f32,
     min: f32,

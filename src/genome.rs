@@ -1,4 +1,5 @@
-use std::{collections::HashMap, fmt::Display};
+use std::{collections::HashMap, fmt::Display, fs::{OpenOptions, self}, path::Path, io::Write};
+use serde::{Serialize, Deserialize};
 
 use crate::prelude::*;
 
@@ -16,7 +17,7 @@ use crate::prelude::*;
 /// 
 /// let alpha_specimen = animal.simulate(100, survivability_evaluator);
 /// ```
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct Genome {
     chromosomes: HashMap<String, Chromosome>,
 }
@@ -200,6 +201,62 @@ impl Genome {
     #[inline]
     pub fn set_gene(&mut self, chromo_name: &str, gene_name: &str, gene: Gene) -> Result<(), &str> {
         self.chromosomes.get_mut(chromo_name).ok_or("No chromosome by that name exists")?.set_gene(gene_name, gene)
+    }
+
+    /// Saves `self` to file.
+    #[inline]
+    pub fn save(&self, path: impl AsRef<Path>) -> Result<(), &str> {
+        let data = toml::to_string_pretty(self).ok().ok_or("Could not convert to toml")?;
+
+        let mut file = OpenOptions::new()
+            .create(true)
+            .write(true)
+            .open(path)
+            .ok().ok_or("Could not open file")?;
+        file.write(data.as_bytes()).ok().ok_or("Could not write to file")?;
+
+        Ok(())
+    }
+
+    /// Loads file and returns its `Genome`.
+    #[inline]
+    pub fn load(path: impl AsRef<Path>) -> Result<Self, &'static str> {
+        let string = fs::read_to_string(path).ok().ok_or("Could not open file")?;
+
+        toml::from_str(&string).ok().ok_or("Invalid toml")
+    }
+    
+    /// Attempts to load `Genome`, if fails, uses existing.
+    #[inline]
+    pub fn load_or(path: impl AsRef<Path>, genome: Self) -> Self {
+        if let Ok(res) = Genome::load(path) {
+            return res;
+        }
+        
+        genome
+    }
+
+    /// Attempts to load `Genome`, if fails, creates a new `Genome`.
+    #[inline]
+    pub fn load_or_else(path: impl AsRef<Path>, genome: impl FnOnce() -> Self) -> Self {
+        if let Ok(res) = Genome::load(path) {
+            return res;
+        }
+        
+        genome()
+    }
+
+    /// Attempts to load `Genome`, if fails, creates a new `Genome` and saves it to the file.
+    #[inline]
+    pub fn load_or_create(path: impl AsRef<Path> + Clone, genome: impl FnOnce() -> Self) -> Result<Self, &'static str> {
+        if let Ok(res) = Genome::load(path.clone()) {
+            return Ok(res);
+        }
+        
+        let genome = genome();
+        genome.save(path).ok().ok_or("Failed to save")?;
+
+        Ok(genome)
     }
 }
 

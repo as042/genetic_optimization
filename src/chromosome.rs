@@ -1,9 +1,10 @@
 use std::collections::HashMap;
+use serde::{Serialize, Deserialize};
 
 use crate::prelude::*;
 
 /// A list of semi-related genes.
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct Chromosome {
     genes: HashMap<String, Gene>,
 }

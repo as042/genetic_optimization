@@ -2,7 +2,7 @@
 use genetic_optimization::prelude::*;
 
 fn main() {
-    std::env::set_var("RUST_BACKTRACE", "full");
+    std::env::set_var("RUST_BACKTRACE", "0");
 
     // polynomial a³ + b³ + c³ + j² + k² + l² + x + y + z
     let genome = Genome::new(vec![
@@ -17,17 +17,31 @@ fn main() {
         ("lines", "z", Gene::new_with_range(1.0, -100.0, 100.0))
     ]);
 
-    let params = genome.hyper_simulate(2, close_to_42, SimHyperParams::default(), true);
-    println!("ded@eede\nnvj#!rnrn");
-    let optimized = genome.simulate(100, 10000, close_to_42, SimHyperParams::from_genome(&params), true);
+    let params = Genome::load_or_create("params.txt", 
+        || genome.hyper_simulate(30, close_to_42, SimHyperParams::double_hyper(), true)).unwrap();
+    
+    println!("{params}");
 
-    println!("Species: {}, Score: {}", optimized, 0.0);
+    let mut score = 0;
+    for _ in 0..1000 {
+        let optimized = genome.simulate(100, 10000, close_to_42, SimHyperParams::default(), false);
+        let hyper_optimized = genome.simulate(100, 10000, close_to_42, SimHyperParams::from_genome(&params), false);
 
-    // for k in (0..=100).step_by(1) {
-    //     let optimized = genome.simulate(k, close_to_42, SimHyperParams::default(), false);
+        if close_to_42(&hyper_optimized) > close_to_42(&optimized) {
+            score += 1;
+        }
+        else {
+            score -= 1;
+        }
+    }
 
-    //     println!("Generations: {k}, Score: {:#?}", close_to_42(&optimized));
-    // }
+    println!("{score}");
+
+    // let optimized = genome.simulate(100, 10000, close_to_42, SimHyperParams::default(), true);
+    // println!("Species: {}, Score: {}", optimized, close_to_42(&optimized));
+    
+    // let hyper_optimized: Genome = genome.simulate(100, 10000, close_to_42, SimHyperParams::from_genome(&params), true);
+    // println!("Species: {}, Score: {}", hyper_optimized, close_to_42(&hyper_optimized));
 }
 
 fn close_to_42(genome: &Genome) -> f32 {

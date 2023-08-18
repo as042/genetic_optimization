@@ -9,3 +9,5 @@ license = "MIT OR Apache-2.0"
 
 [dependencies]
 rand = "0.8.5"
+serde = { version = "1.0.183", features = ["derive"] }
+toml = "0.7.6"
