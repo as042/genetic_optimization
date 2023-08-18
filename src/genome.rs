@@ -204,6 +204,7 @@ impl Genome {
 }
 
 impl Display for Genome {
+    #[inline]
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let mut display_obj: HashMap<String, HashMap<String, f32>> = HashMap::new();
         for chromo in &self.chromosomes {

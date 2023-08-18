@@ -2,6 +2,8 @@
 use genetic_optimization::prelude::*;
 
 fn main() {
+    std::env::set_var("RUST_BACKTRACE", "full");
+
     // polynomial a³ + b³ + c³ + j² + k² + l² + x + y + z
     let genome = Genome::new(vec![
         ("cubes", "a", Gene::new_with_range(1.0, -100.0, 100.0)),
@@ -15,18 +17,24 @@ fn main() {
         ("lines", "z", Gene::new_with_range(1.0, -100.0, 100.0))
     ]);
 
-    let optimized = genome.simulate(1000, close_to_42);
+    let params = genome.hyper_simulate(2, close_to_42, SimHyperParams::default(), true);
+    println!("ded@eede\nnvj#!rnrn");
+    let optimized = genome.simulate(100, 10000, close_to_42, SimHyperParams::from_genome(&params), true);
 
-    println!("Species: {}, Score: {}", optimized, close_to_42(&optimized));
+    println!("Species: {}, Score: {}", optimized, 0.0);
 
     // for k in (0..=100).step_by(1) {
-    //     let optimized = genome.simulate(k, close_to_42);
+    //     let optimized = genome.simulate(k, close_to_42, SimHyperParams::default(), false);
 
     //     println!("Generations: {k}, Score: {:#?}", close_to_42(&optimized));
     // }
 }
 
 fn close_to_42(genome: &Genome) -> f32 {
+    if genome.gene("cubes", "a").is_none() {
+        println!("{genome}");
+    }
+
     let a = genome.gene("cubes", "a").unwrap().value();
     let b = genome.gene("cubes", "b").unwrap().value();
     let c = genome.gene("cubes", "c").unwrap().value();

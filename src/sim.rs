@@ -2,24 +2,60 @@ use rand::Rng;
 
 use crate::prelude::*;
 
+/// Hyper parameters for `simulate()`.
 #[derive(Clone, Copy, Debug, PartialEq, PartialOrd)]
 pub struct SimHyperParams {
-    elitism_survivors: usize,
-    elitism_reproducers: usize,
-    num_random_species: usize,
+    pub elitism_survivors: usize,
+    pub elitism_reproducers: usize,
+    pub random_reproducers: usize,
+    pub num_random_species: usize,
 
-    crossover_chance_per_gene: f32,
-    offspring_mutation_chance: f32,
-    offspring_mutation_randomness_weight: f32,
-    random_species_randomness_weight: f32,
+    pub crossover_chance_per_gene: f32,
+    pub offspring_mutation_chance: f32,
+    pub offspring_mutation_randomness_weight: f32,
+    pub random_species_randomness_weight: f32,
+}
+
+impl SimHyperParams {
+    /// Creates a `SimHyperParams` from `Genome`.
+    #[inline]
+    pub fn from_genome(genome: &Genome) -> Self {
+        let elitism_survivors = genome.gene("species", "elitism_survivors").unwrap().value();
+        let elitism_reproducers = genome.gene("species", "elitism_reproducers").unwrap().value();
+        let random_reproducers = genome.gene("species", "random_reproducers").unwrap().value();
+        let num_random_species = genome.gene("species", "num_random_species").unwrap().value();
+        let crossover_chance_per_gene = genome.gene("recombination", "crossover_chance_per_gene").unwrap().value();
+        let offspring_mutation_chance = genome.gene("recombination", "offspring_mutation_chance").unwrap().value();
+        let offspring_mutation_randomness_weight = genome.gene("recombination", "offspring_mutation_randomness_weight").unwrap().value();
+        let random_species_randomness_weight = genome.gene("random_species", "random_species_randomness_weight").unwrap().value();
+    
+        SimHyperParams {
+            elitism_survivors: elitism_survivors.round() as usize,
+            elitism_reproducers: elitism_reproducers.round() as usize,
+            random_reproducers: random_reproducers.round() as usize,
+            num_random_species: num_random_species.round() as usize,
+            crossover_chance_per_gene,
+            offspring_mutation_chance,
+            offspring_mutation_randomness_weight,
+            random_species_randomness_weight,
+        }
+    }
+
+    /// Returns the number of species a generation will have if a simulation is run using `self`.
+    #[inline]
+    pub fn species_per_generation(&self) -> usize {
+        self.elitism_survivors + self.num_random_species + self.random_reproducers + self.elitism_reproducers * (self.elitism_reproducers - 1) / 2
+    }
 }
 
 impl Default for SimHyperParams {
+    #[inline]
     fn default() -> Self {
         Self { 
             elitism_survivors: 1, 
-            elitism_reproducers: 14, 
-            num_random_species: 8, 
+            elitism_reproducers: 13, 
+            random_reproducers: 11,
+            num_random_species: 10, 
             crossover_chance_per_gene: 0.1, 
             offspring_mutation_chance: 0.1, 
             offspring_mutation_randomness_weight: 0.25, 
@@ -29,6 +65,85 @@ impl Default for SimHyperParams {
 }
 
 impl Genome {
+    /// Trains the GA itself to best be able to tackle the given problem.
+    #[inline]
+    pub fn hyper_simulate(&self, generations: usize, evaluator: fn(&Genome) -> f32, hyper_params: SimHyperParams, print: bool) -> Genome {
+        let hyper_genome = Genome::new(vec![
+            ("species", "elitism_survivors", Gene::new_with_range(1.0, 0.0, 100.0)),
+            ("species", "elitism_reproducers", Gene::new_with_range(13.0, 0.0, 100.0)),
+            ("species", "random_reproducers", Gene::new_with_range(11.0, 0.0, 100.0)),
+            ("species", "num_random_species", Gene::new_with_range(10.0, 0.0, 100.0)),
+            ("recombination", "crossover_chance_per_gene", Gene::new_with_range(0.1, 0.0, 1.0)),
+            ("recombination", "offspring_mutation_chance", Gene::new_with_range(0.1, 0.0, 1.0)),
+            ("recombination", "offspring_mutation_randomness_weight", Gene::new_with_range(0.25, 0.0, 1.0)),
+            ("random_species", "random_species_randomness_weight", Gene::new_with_range(1.0, 0.0, 1.0))
+        ]);
+
+        hyper_genome.hyper_sim(self, generations, 1000000, evaluator, hyper_params, print)
+    }
+
+    #[inline]
+    fn hyper_sim(&self, template: &Genome, mut generations: usize, species_limit: usize, evaluator: fn(&Genome) -> f32, hyper_params: SimHyperParams, print: bool) -> Genome {
+        if generations == 0 { return self.clone(); }
+
+        let mut rng = rand::thread_rng();
+
+        // Generation 1
+        let mut species = gen_random_species(self, hyper_params.species_per_generation() - 1, hyper_params.random_species_randomness_weight);
+        species.push(self.clone());
+
+        // Generations 2+
+        for i in 1..generations {
+            let mut new_species = Vec::default();
+
+            species.sort_unstable_by(|a, b| hyper_eval(b, template, evaluator).partial_cmp(&hyper_eval(a, template, evaluator)).unwrap());
+
+            if print { println!("Generation: {i}, Score: {}", evaluator(&species[0])); }
+
+            panic!("p");
+
+            // Elitism
+            for j in 0..hyper_params.species_per_generation() {
+                // Elitism survivors
+                if j < hyper_params.elitism_survivors {
+                    new_species.push(species[0].clone());
+                }
+                // Elitism reproducers
+                if j + 1 < hyper_params.elitism_reproducers {
+                    for k in j + 1..hyper_params.elitism_reproducers {
+                        new_species.push(species[j].mate(&species[k], hyper_params.crossover_chance_per_gene, hyper_params.offspring_mutation_chance, hyper_params.offspring_mutation_randomness_weight));
+                    }
+                }
+                if j >= hyper_params.elitism_survivors && j + 1 >= hyper_params.elitism_reproducers {
+                    break;
+                }
+            }
+
+            // Random reproducers
+            for _ in 0..hyper_params.random_reproducers {
+                let idx = rng.gen_range(1..hyper_params.species_per_generation());
+                new_species.push(species[0].mate(&species[idx], hyper_params.crossover_chance_per_gene, hyper_params.offspring_mutation_chance, hyper_params.offspring_mutation_randomness_weight));
+            }
+
+            new_species.extend(gen_random_species(self, hyper_params.num_random_species, hyper_params.random_species_randomness_weight));
+
+            species = new_species;
+
+            generations = i;
+
+            // Species limit
+            if i * hyper_params.species_per_generation() >= species_limit {
+                break;
+            }
+        }
+
+        species.sort_unstable_by(|a, b| hyper_eval(b, template, evaluator).partial_cmp(&hyper_eval(a, template, evaluator)).unwrap());
+
+        if print { println!("Generation: {}, Score: {}", generations + 1, evaluator(&species[0])); }
+        
+        species[0].clone()
+    }
+
     /// Simulates natural selection to optimize `self` for the given task.
     /// 
     /// The evaluator must be a function that takes a `Genome` with the same structure as `self` and returns a score (the greater, the better).
@@ -77,80 +192,123 @@ impl Genome {
     /// assert_eq!(optimized.genes().len(), genome.genes().len());
     /// ```
     #[inline]
-    pub fn simulate(&self, generations: usize, evaluator: fn(&Genome) -> f32, hyper_params: SimHyperParams) -> Genome {
+    pub fn simulate(&self, mut generations: usize, species_limit: usize, evaluator: fn(&Genome) -> f32, hyper_params: SimHyperParams, print: bool) -> Genome {
         if generations == 0 { return self.clone(); }
 
+        let mut rng = rand::thread_rng();
+
         // Generation 1
-        let mut species = gen_random_species(self, 15, true);
+        let mut species = gen_random_species(self, hyper_params.species_per_generation() - 1, hyper_params.random_species_randomness_weight);
         species.push(self.clone());
 
         // Generations 2+
-        for _ in 1..generations {
+        for i in 1..generations {
             let mut new_species = Vec::default();
 
             species.sort_unstable_by(|a, b| evaluator(b).partial_cmp(&evaluator(a)).unwrap());
 
-            new_species.push(species[0].clone());
-            for mutate in [false, true] {
-                new_species.push(species[0].mate(&species[1], mutate));
-                new_species.push(species[0].mate(&species[2], mutate));
-                new_species.push(species[0].mate(&species[3], mutate));
-                new_species.push(species[1].mate(&species[2], mutate));
-                new_species.push(species[1].mate(&species[3], mutate));
-                new_species.push(species[2].mate(&species[3], mutate));
+            if print { println!("Generation: {i}, Score: {}", evaluator(&species[0])); }
+
+            // Elitism
+            for j in 0..hyper_params.species_per_generation() {
+                // Elitism survivors
+                if j < hyper_params.elitism_survivors {
+                    new_species.push(species[0].clone());
+                }
+                // Elitism reproducers
+                if j + 1 < hyper_params.elitism_reproducers {
+                    for k in j + 1..hyper_params.elitism_reproducers {
+                        new_species.push(species[j].mate(&species[k], hyper_params.crossover_chance_per_gene, hyper_params.offspring_mutation_chance, hyper_params.offspring_mutation_randomness_weight));
+                    }
+                }
+                if j >= hyper_params.elitism_survivors && j + 1 >= hyper_params.elitism_reproducers {
+                    break;
+                }
             }
 
-            new_species.extend(gen_random_species(self, 3, false));
+            // Random reproducers
+            for _ in 0..hyper_params.random_reproducers {
+                let idx = rng.gen_range(1..hyper_params.species_per_generation());
+                if idx >= species.len() {
+                    println!("{:#?}", hyper_params);
+                }
+                new_species.push(species[0].mate(&species[idx], hyper_params.crossover_chance_per_gene, hyper_params.offspring_mutation_chance, hyper_params.offspring_mutation_randomness_weight));
+            }
+
+            new_species.extend(gen_random_species(self, hyper_params.num_random_species, hyper_params.random_species_randomness_weight));
 
             species = new_species;
+
+            generations = i;
+
+            // Species limit
+            if i * hyper_params.species_per_generation() >= species_limit {
+                break;
+            }
         }
 
         species.sort_unstable_by(|a, b| evaluator(b).partial_cmp(&evaluator(a)).unwrap());
+
+        if print { println!("Generation: {}, Score: {}", generations + 1, evaluator(&species[0])); }
+
+        // println!("spec: {}", species[0]);
         
         species[0].clone()
     }
 
     #[inline]
-    fn mate(&self, other: &Genome, mutate: bool) -> Genome {
+    fn mate(&self, other: &Genome, crossover_chance: f32, mutation_chance: f32, randomness_weight: f32) -> Genome {
         let mut rng = rand::thread_rng();
 
         let mut offspring = self.clone();
-        for chromo in other.chromosomes() {
-            if rng.gen_bool(0.5) {
-                let _ = offspring.set_chromosome(chromo.0, chromo.1.clone());
-            }
-        }
 
-        if mutate {
-            for gene in offspring.clone().genes() {
-                if rng.gen_bool(0.1) {
-                    let _ = offspring.set_gene(gene.0, gene.1, gene.2.mutate());
+        // Recombination
+        for chromo in offspring.clone().chromosomes() {
+            let mut use_other = rng.gen_bool(0.5);
+            for g in chromo.1.genes() {
+                // Pick which chromosome to take gene from
+                let mut gene = g.1;
+                if use_other {
+                    gene = other.gene(chromo.0, g.0).unwrap();
+                }
+    
+                // Mutation
+                if rng.gen_bool(mutation_chance as f64) {
+                    let _ = offspring.set_gene(chromo.0, g.0, gene.mutate(randomness_weight));
+                }
+    
+                // Crossover
+                if rng.gen_bool(crossover_chance as f64) {
+                    use_other = !use_other;
                 }
             }
         }
+
 
         offspring
     }
 }
 
 #[inline]
-fn gen_random_species(template: &Genome, num: usize, mutate: bool) -> Vec<Genome> {
-    let mut rng = rand::thread_rng();
-
+fn gen_random_species(template: &Genome, num: usize, randomness_weight: f32) -> Vec<Genome> {
     let mut species = Vec::default();
     for _ in 0..num {
         let mut spec = template.clone();
         for gene in template.genes() {
-            if mutate {
-                let _ = spec.set_gene(gene.0, gene.1, gene.2.mutate());
-            }
-            else {
-                let _ = spec.set_gene(gene.0, gene.1, Gene::new_with_range(rng.gen_range(gene.2.min()..gene.2.max()), gene.2.min(), gene.2.max()));
-            }            
+            let _ = spec.set_gene(gene.0, gene.1, gene.2.mutate(randomness_weight));         
         }
 
         species.push(spec)
     }
 
     species
+}
+
+#[inline]
+fn hyper_eval(genome: &Genome, template: &Genome, eval: fn(&Genome) -> f32) -> f32 {
+    let hyper_params = SimHyperParams::from_genome(genome);
+
+    // println!("{genome}, {template}, {:?}", eval);
+
+    eval(&template.simulate(5, 10000, eval, hyper_params, false))
 }
