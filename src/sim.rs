@@ -234,7 +234,7 @@ impl Genome {
         for i in 1..generations {
             let mut new_species = Vec::default();
 
-            species.sort_unstable_by(|a, b| evaluator(b).partial_cmp(&evaluator(a)).unwrap());
+            species.sort_by_cached_key(|x| (evaluator(x) * -1_000_000.0) as i32);
 
             if print { println!("Generation: {i}, Score: {}", evaluator(&species[0])); }
 
@@ -276,7 +276,7 @@ impl Genome {
             }
         }
 
-        species.sort_unstable_by(|a, b| evaluator(b).partial_cmp(&evaluator(a)).unwrap());
+        species.sort_by_cached_key(|x| (evaluator(x) * -1_000_000.0) as i32);
 
         if print { println!("Generation: {}, Score: {}", generations + 1, evaluator(&species[0])); }
 
@@ -338,9 +338,9 @@ fn hyper_eval(genome: &Genome, template: &Genome, eval: fn(&Genome) -> f32) -> f
     let hyper_params = SimHyperParams::from_genome(genome);
 
     let mut score = 0.0;
-    for _ in 0..128 {
-        score += eval(&template.simulate(5, 1000, eval, hyper_params, false));
+    for _ in 0..32 {
+        score += eval(&template.simulate(50, 10000, eval, hyper_params, false));
     }
 
-    score / 128.0
+    score / 32.0
 }
