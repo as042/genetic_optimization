@@ -2,8 +2,6 @@
 use genetic_optimization::prelude::*;
 
 fn main() {
-    std::env::set_var("RUST_BACKTRACE", "0");
-
     // polynomial a³ + b³ + c³ + j² + k² + l² + x + y + z
     let genome = Genome::new(vec![
         ("cubes", "a", Gene::new_with_range(1.0, -100.0, 100.0)),
