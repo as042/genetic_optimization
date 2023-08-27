@@ -16,34 +16,34 @@ fn main() {
     ]);
 
     let time = std::time::Instant::now();
-    genome.simulate(100000, 10000000, close_to_42, SimHyperParams::default(), true);
+    genome.simulate(10, 10000000, close_to_42, SimHyperParams::default(), true);
     println!("{}", time.elapsed().as_secs_f32());
 
-    let params = Genome::load_or_create("params.txt", 
-        || genome.hyper_simulate(10, close_to_42, SimHyperParams::double_hyper(), true)).unwrap();
+    // let params = Genome::load_or_create("params.txt", 
+    //     || genome.hyper_simulate(10, close_to_42, SimHyperParams::double_hyper(), true)).unwrap();
     
-    println!("{params}");
+    // println!("{params}");
 
-    let mut score = 0;
-    for _ in 0..1000 {
-        let optimized = genome.simulate(100, 10000, close_to_42, SimHyperParams::default(), false);
-        let hyper_optimized = genome.simulate(100, 10000, close_to_42, SimHyperParams::from_genome(&params), false);
+    // let mut score = 0;
+    // for _ in 0..1000 {
+    //     let optimized = genome.simulate(100, 10000, close_to_42, SimHyperParams::default(), false);
+    //     let hyper_optimized = genome.simulate(100, 10000, close_to_42, SimHyperParams::from_genome(&params), false);
 
-        if close_to_42(&hyper_optimized) > close_to_42(&optimized) {
-            score += 1;
-        }
-        else {
-            score -= 1;
-        }
-    }
+    //     if close_to_42(&hyper_optimized) > close_to_42(&optimized) {
+    //         score += 1;
+    //     }
+    //     else {
+    //         score -= 1;
+    //     }
+    // }
 
-    println!("{score}");
+    // println!("{score}");
 
-    let optimized = genome.simulate(100, 10000, close_to_42, SimHyperParams::default(), true);
-    println!("Species: {}, Score: {}", optimized, close_to_42(&optimized));
+    // let optimized = genome.simulate(100, 10000, close_to_42, SimHyperParams::default(), true);
+    // println!("Species: {}, Score: {}", optimized, close_to_42(&optimized));
     
-    let hyper_optimized: Genome = genome.simulate(100, 10000, close_to_42, SimHyperParams::from_genome(&params), true);
-    println!("Species: {}, Score: {}", hyper_optimized, close_to_42(&hyper_optimized));
+    // let hyper_optimized: Genome = genome.simulate(100, 10000, close_to_42, SimHyperParams::from_genome(&params), true);
+    // println!("Species: {}, Score: {}", hyper_optimized, close_to_42(&hyper_optimized));
 }
 
 fn close_to_42(genome: &Genome) -> f32 {
@@ -62,6 +62,13 @@ fn close_to_42(genome: &Genome) -> f32 {
     let z = genome.gene("lines", "z").unwrap().value();
 
     let sum = a.powi(3) + b.powi(3) + c.powi(3) + j.powi(2) + k.powi(2) + l.powi(2) + x + y + z;
+
+    for k in 0..1000 {
+        for d in 0..30 {
+            let mut j = String::from("peep");
+            j.push('d');
+        }
+    }
 
     // score is correlated to distance from 42
     // best possible score is 1.0

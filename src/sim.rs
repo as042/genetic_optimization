@@ -1,4 +1,7 @@
+use std::{sync::mpsc::{Sender, Receiver, self}, thread};
+
 use rand::Rng;
+use threadpool::ThreadPool;
 
 use crate::prelude::*;
 
@@ -84,7 +87,7 @@ impl Default for SimHyperParams {
     fn default() -> Self {
         Self { 
             elitism_survivors: 1, 
-            elitism_reproducers: 13, 
+            elitism_reproducers: 30, 
             random_reproducers: 11,
             num_random_species: 10, 
             crossover_chance_per_gene: 0.1, 
@@ -135,7 +138,7 @@ impl Genome {
             for j in 0..hyper_params.species_per_generation() {
                 // Elitism survivors
                 if j < hyper_params.elitism_survivors {
-                    new_species.push(species[0].clone());
+                    new_species.push(species[j].clone());
                 }
                 // Elitism reproducers
                 if j + 1 < hyper_params.elitism_reproducers {
@@ -234,7 +237,8 @@ impl Genome {
         for i in 1..generations {
             let mut new_species = Vec::default();
 
-            species.sort_by_cached_key(|x| (evaluator(x) * -1_000_000.0) as i32);
+            // sort_species(&mut species, evaluator);
+            species.sort_by_cached_key(|x| (evaluator(x) * -1_000_000.0) as i64);
 
             if print { println!("Generation: {i}, Score: {}", evaluator(&species[0])); }
 
@@ -242,7 +246,7 @@ impl Genome {
             for j in 0..hyper_params.species_per_generation() {
                 // Elitism survivors
                 if j < hyper_params.elitism_survivors {
-                    new_species.push(species[0].clone());
+                    new_species.push(species[j].clone());
                 }
                 // Elitism reproducers
                 if j + 1 < hyper_params.elitism_reproducers {
@@ -258,9 +262,6 @@ impl Genome {
             // Random reproducers
             for _ in 0..hyper_params.random_reproducers {
                 let idx = rng.gen_range(1..hyper_params.species_per_generation());
-                if idx >= species.len() {
-                    println!("{:#?}", hyper_params);
-                }
                 new_species.push(species[0].mate(&species[idx], hyper_params.crossover_chance_per_gene, hyper_params.offspring_mutation_chance, hyper_params.offspring_mutation_randomness_weight));
             }
 
@@ -276,11 +277,10 @@ impl Genome {
             }
         }
 
-        species.sort_by_cached_key(|x| (evaluator(x) * -1_000_000.0) as i32);
+        // species.sort_by_cached_key(|x| (evaluator(x) * -1_000_000.0) as i64);
+        sort_species(&mut species, evaluator);
 
         if print { println!("Generation: {}, Score: {}", generations + 1, evaluator(&species[0])); }
-
-        // println!("spec: {}", species[0]);
         
         species[0].clone()
     }
@@ -316,6 +316,34 @@ impl Genome {
 
         offspring
     }
+}
+
+#[inline]
+fn sort_species(species: &mut Vec<Genome>, eval: fn(&Genome) -> f32) {
+    let pool = ThreadPool::new(16);
+
+    let (tx, rx)= mpsc::channel();
+
+    for k in 0..species.len() {
+        let thread_tx = tx.clone();
+        let spec = species[k].clone();
+
+        pool.execute(move || {
+            thread_tx.send((k, eval(&spec))).unwrap();
+        });
+    }
+
+    let mut new = Vec::with_capacity(species.len());
+    for _ in 0..species.len() {
+        let recv = rx.recv().unwrap();
+        new.push((species[recv.0].clone(), recv.1));
+    }
+    
+    // pool.join();
+
+    new.sort_unstable_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
+    
+    *species = new.iter().map(|x| x.0.clone()).collect();
 }
 
 #[inline]
