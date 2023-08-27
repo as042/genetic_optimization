@@ -228,6 +228,7 @@ impl Genome {
         if generations == 0 { return self.clone(); }
 
         let mut rng = rand::thread_rng();
+        let pool = ThreadPool::new(16);
 
         // Generation 1
         let mut species = gen_random_species(self, hyper_params.species_per_generation() - 1, hyper_params.random_species_randomness_weight);
@@ -237,8 +238,8 @@ impl Genome {
         for i in 1..generations {
             let mut new_species = Vec::default();
 
-            // sort_species(&mut species, evaluator);
-            species.sort_by_cached_key(|x| (evaluator(x) * -1_000_000.0) as i64);
+            sort_species(&mut species, evaluator, &pool);
+            // species.sort_by_cached_key(|x| (evaluator(x) * -1_000_000.0) as i64);
 
             if print { println!("Generation: {i}, Score: {}", evaluator(&species[0])); }
 
@@ -278,7 +279,7 @@ impl Genome {
         }
 
         // species.sort_by_cached_key(|x| (evaluator(x) * -1_000_000.0) as i64);
-        sort_species(&mut species, evaluator);
+        sort_species(&mut species, evaluator, &pool);
 
         if print { println!("Generation: {}, Score: {}", generations + 1, evaluator(&species[0])); }
         
@@ -319,24 +320,31 @@ impl Genome {
 }
 
 #[inline]
-fn sort_species(species: &mut Vec<Genome>, eval: fn(&Genome) -> f32) {
-    let pool = ThreadPool::new(16);
-
+fn sort_species(species: &mut Vec<Genome>, eval: fn(&Genome) -> f32, pool: &ThreadPool) {
     let (tx, rx)= mpsc::channel();
 
-    for k in 0..species.len() {
+    let chunks = species.chunks(100);
+    for k in 0..chunks.len() {
         let thread_tx = tx.clone();
-        let spec = species[k].clone();
+        let list = chunks.clone().nth(k).unwrap().to_owned();
 
         pool.execute(move || {
-            thread_tx.send((k, eval(&spec))).unwrap();
+            let mut vec = Vec::with_capacity(100);
+            for spec in list {
+                vec.push(eval(&spec));
+            }
+
+            thread_tx.send((k, vec)).unwrap();
         });
     }
 
     let mut new = Vec::with_capacity(species.len());
-    for _ in 0..species.len() {
+    for _ in 0..chunks.len() {
         let recv = rx.recv().unwrap();
-        new.push((species[recv.0].clone(), recv.1));
+        let chunk = chunks.clone().nth(recv.0).unwrap();
+        for k in 0..recv.1.len() {
+            new.push((chunk[k].clone(), recv.1[k]));
+        }
     }
     
     // pool.join();
