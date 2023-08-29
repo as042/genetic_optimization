@@ -17,7 +17,7 @@ use crate::prelude::*;
 ///     ("behavior", "food_motivation", Gene::new(1.0))
 /// ]);
 /// 
-/// let alpha_specimen = animal.simulate(100, 0, survivability_evaluator, SimHyperParams::default(), false, false);
+/// let alpha_specimen = animal.simulate(100, 0, survivability_evaluator, SimHyperParams::default(), Parallelism::default(), false);
 /// ```
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct Genome {
