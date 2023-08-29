@@ -8,6 +8,8 @@ use crate::prelude::*;
 /// # Examples
 /// 
 /// ```
+/// use genetic_optimization::prelude::*;
+/// 
 /// let animal = Genome::new(vec![
 ///     ("eyes", "green", Gene::new(0.5)),
 ///     ("eyes", "vision_quality", Gene::new(0.9)),
@@ -15,7 +17,7 @@ use crate::prelude::*;
 ///     ("behavior", "food_motivation", Gene::new(1.0))
 /// ]);
 /// 
-/// let alpha_specimen = animal.simulate(100, survivability_evaluator);
+/// let alpha_specimen = animal.simulate(100, 0, survivability_evaluator, SimHyperParams::default(), false, false);
 /// ```
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct Genome {

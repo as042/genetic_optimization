@@ -1,7 +1,5 @@
-use std::{sync::mpsc::{Sender, Receiver, self}, thread};
-
+use std::{sync::mpsc, thread};
 use rand::Rng;
-use threadpool::ThreadPool;
 
 use crate::prelude::*;
 
@@ -87,7 +85,7 @@ impl Default for SimHyperParams {
     fn default() -> Self {
         Self { 
             elitism_survivors: 1, 
-            elitism_reproducers: 30, 
+            elitism_reproducers: 13, 
             random_reproducers: 11,
             num_random_species: 10, 
             crossover_chance_per_gene: 0.1, 
@@ -224,11 +222,11 @@ impl Genome {
     /// assert_eq!(optimized.genes().len(), genome.genes().len());
     /// ```
     #[inline]
-    pub fn simulate(&self, mut generations: usize, species_limit: usize, evaluator: fn(&Genome) -> f32, hyper_params: SimHyperParams, print: bool) -> Genome {
+    pub fn simulate(&self, mut generations: usize, mut species_limit: usize, evaluator: fn(&Genome) -> f32, hyper_params: SimHyperParams, parallel: bool, print: bool) -> Genome {
         if generations == 0 { return self.clone(); }
+        if species_limit == 0 { species_limit = usize::MAX }
 
         let mut rng = rand::thread_rng();
-        let pool = ThreadPool::new(16);
 
         // Generation 1
         let mut species = gen_random_species(self, hyper_params.species_per_generation() - 1, hyper_params.random_species_randomness_weight);
@@ -238,8 +236,12 @@ impl Genome {
         for i in 1..generations {
             let mut new_species = Vec::default();
 
-            sort_species(&mut species, evaluator, &pool);
-            // species.sort_by_cached_key(|x| (evaluator(x) * -1_000_000.0) as i64);
+            if parallel {
+                sort_species(&mut species, evaluator);
+            }
+            else {
+                species.sort_by_cached_key(|x| (evaluator(x) * -1_000_000.0) as i64);
+            }
 
             if print { println!("Generation: {i}, Score: {}", evaluator(&species[0])); }
 
@@ -278,8 +280,12 @@ impl Genome {
             }
         }
 
-        // species.sort_by_cached_key(|x| (evaluator(x) * -1_000_000.0) as i64);
-        sort_species(&mut species, evaluator, &pool);
+        if parallel {
+            sort_species(&mut species, evaluator);
+        }
+        else {
+            species.sort_by_cached_key(|x| (evaluator(x) * -1_000_000.0) as i64);
+        }
 
         if print { println!("Generation: {}, Score: {}", generations + 1, evaluator(&species[0])); }
         
@@ -320,34 +326,23 @@ impl Genome {
 }
 
 #[inline]
-fn sort_species(species: &mut Vec<Genome>, eval: fn(&Genome) -> f32, pool: &ThreadPool) {
+fn sort_species(species: &mut Vec<Genome>, eval: fn(&Genome) -> f32) {
     let (tx, rx)= mpsc::channel();
 
-    let chunks = species.chunks(100);
-    for k in 0..chunks.len() {
+    for k in 0..species.len() {
         let thread_tx = tx.clone();
-        let list = chunks.clone().nth(k).unwrap().to_owned();
+        let spec = species[k].clone();
 
-        pool.execute(move || {
-            let mut vec = Vec::with_capacity(100);
-            for spec in list {
-                vec.push(eval(&spec));
-            }
-
-            thread_tx.send((k, vec)).unwrap();
+        thread::spawn(move || {
+            thread_tx.send((k, eval(&spec))).unwrap();
         });
     }
 
     let mut new = Vec::with_capacity(species.len());
-    for _ in 0..chunks.len() {
+    for _ in 0..species.len() {
         let recv = rx.recv().unwrap();
-        let chunk = chunks.clone().nth(recv.0).unwrap();
-        for k in 0..recv.1.len() {
-            new.push((chunk[k].clone(), recv.1[k]));
-        }
+        new.push((species[recv.0].clone(), recv.1));
     }
-    
-    // pool.join();
 
     new.sort_unstable_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
     
@@ -375,7 +370,7 @@ fn hyper_eval(genome: &Genome, template: &Genome, eval: fn(&Genome) -> f32) -> f
 
     let mut score = 0.0;
     for _ in 0..32 {
-        score += eval(&template.simulate(50, 10000, eval, hyper_params, false));
+        score += eval(&template.simulate(50, 10000, eval, hyper_params, true, false));
     }
 
     score / 32.0

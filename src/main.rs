@@ -16,7 +16,7 @@ fn main() {
     ]);
 
     let time = std::time::Instant::now();
-    genome.simulate(10, 10000000, close_to_42, SimHyperParams::default(), true);
+    genome.simulate(10000, 0, close_to_42, SimHyperParams::default(), false, true);
     println!("{}", time.elapsed().as_secs_f32());
 
     // let params = Genome::load_or_create("params.txt", 
@@ -62,13 +62,6 @@ fn close_to_42(genome: &Genome) -> f32 {
     let z = genome.gene("lines", "z").unwrap().value();
 
     let sum = a.powi(3) + b.powi(3) + c.powi(3) + j.powi(2) + k.powi(2) + l.powi(2) + x + y + z;
-
-    for k in 0..1000 {
-        for d in 0..30 {
-            let mut j = String::from("peep");
-            j.push('d');
-        }
-    }
 
     // score is correlated to distance from 42
     // best possible score is 1.0
