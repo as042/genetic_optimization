@@ -21,7 +21,7 @@ use crate::prelude::*;
 /// ```
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct Genome {
-    chromosomes: HashMap<String, Chromosome>,
+    chromosomes: HashMap<String, Chromosome>
 }
 
 impl Genome {
@@ -265,7 +265,7 @@ impl Genome {
 impl Display for Genome {
     #[inline]
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let mut display_obj: HashMap<String, HashMap<String, f32>> = HashMap::new();
+        let mut display_obj: HashMap<String, HashMap<String, f64>> = HashMap::new();
         for chromo in &self.chromosomes {
             display_obj.insert(chromo.0.to_string(), HashMap::new());
             for gene in chromo.1.genes() {

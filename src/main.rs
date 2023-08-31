@@ -15,14 +15,14 @@ fn main() {
         ("lines", "z", Gene::new_with_range(1.0, -100.0, 100.0))
     ]);
 
-    genome.simulate(10000, 0, close_to_42, SimHyperParams::default(), Parallelism::Auto, true);
+    Simulation::new()
+        .genome(genome)
+        .eval(close_to_42)
+        .print_settings(PrintSettings::PrintFull)
+        .run(10);
 }
 
-fn close_to_42(genome: &Genome) -> f32 {
-    if genome.gene("cubes", "a").is_none() {
-        println!("{genome}");
-    }
-
+fn close_to_42(genome: &Genome) -> f64 {
     let a = genome.gene("cubes", "a").unwrap().value();
     let b = genome.gene("cubes", "b").unwrap().value();
     let c = genome.gene("cubes", "c").unwrap().value();
