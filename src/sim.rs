@@ -8,6 +8,7 @@ pub struct Simulation {
     genome: Option<Genome>,
     species_limit: usize,
     eval: Option<fn(&Genome) -> f64>,
+    eval_with_util: Option<fn(&Genome, fn(Vec<f64>) -> f64) -> f64>,
     hyper_params: SimHyperParams,
     parallelism: Parallelism,
     print_settings: PrintSettings,
@@ -22,8 +23,8 @@ impl Simulation {
 
     /// Adds a genome to `self`.
     #[inline]
-    pub fn genome(&mut self, genome: Genome) -> &mut Self {
-        self.genome = Some(genome);
+    pub fn genome(&mut self, genome: &Genome) -> &mut Self {
+        self.genome = Some(genome.clone());
         self
     }
 
@@ -34,10 +35,27 @@ impl Simulation {
         self
     }
 
-    /// Adds an evaluation function to `self`. Is required.
+    /// Adds an evaluation function to `self`. An evaluation function is required.
+    /// 
+    /// # Panics
+    /// Will panic if `self.eval_with_util()` has already been run.
     #[inline]
     pub fn eval(&mut self, eval: fn(&Genome) -> f64) -> &mut Self {
+        assert!(self.eval_with_util.is_none());
+
         self.eval = Some(eval);
+        self
+    }
+
+    /// Adds an evaluation function with an additional parameter to `self`. An evaluation function is required.
+    /// 
+    /// # Panics
+    /// Will panic if `self.eval()` has already been run.
+    #[inline]
+    pub fn eval_with_util(&mut self, eval: fn(&Genome, fn(Vec<f64>) -> f64) -> f64) -> &mut Self {
+        assert!(self.eval.is_none());
+
+        self.eval_with_util = Some(eval);
         self
     }
 
@@ -71,6 +89,7 @@ impl Simulation {
     pub fn run(&self, generations: usize) -> Genome {
         assert!(self.genome.is_some());
         assert!(self.eval.is_some());
+
         self.genome.clone().unwrap().sim(generations, self.species_limit, self.eval.unwrap(), self.hyper_params, self.parallelism, self.print_settings)
     }
 }
@@ -210,83 +229,6 @@ impl PrintSettings {
 }
 
 impl Genome {
-    /// Trains the GA itself to best be able to tackle the given problem.
-    #[inline]
-    pub fn hyper_simulate(&self, generations: usize, eval: fn(&Genome) -> f64, hyper_params: SimHyperParams, print: PrintSettings) -> Genome {
-        let hyper_genome = Genome::new(vec![
-            ("species", "elitism_survivors", Gene::new_with_range(1.0, 0.0, 100.0)),
-            ("species", "elitism_reproducers", Gene::new_with_range(13.0, 0.0, 20.0)),
-            ("species", "random_reproducers", Gene::new_with_range(11.0, 0.0, 100.0)),
-            ("species", "num_random_species", Gene::new_with_range(10.0, 0.0, 100.0)),
-            ("recombination", "crossover_chance_per_gene", Gene::new_with_range(0.1, 0.0, 1.0)),
-            ("recombination", "offspring_mutation_chance", Gene::new_with_range(0.1, 0.0, 1.0)),
-            ("recombination", "offspring_mutation_randomness_weight", Gene::new_with_range(0.25, 0.0, 1.0)),
-            ("random_species", "random_species_randomness_weight", Gene::new_with_range(1.0, 0.0, 1.0))
-        ]);
-
-        hyper_genome.hyper_sim(self, generations, 0, eval, hyper_params, print)
-    }
-
-    #[inline]
-    fn hyper_sim(&self, template: &Genome, mut generations: usize, species_limit: usize, eval: fn(&Genome) -> f64, hyper_params: SimHyperParams, print: PrintSettings) -> Genome {
-        if generations == 0 { return self.clone(); }
-
-        let mut rng = rand::thread_rng();
-
-        // Generation 1
-        let mut species = gen_random_species(self, hyper_params.species_per_generation() - 1, hyper_params.random_species_randomness_weight);
-        species.push(self.clone());
-
-        // Generations 2+
-        for i in 1..generations {
-            let mut new_species = Vec::default();
-
-            species.sort_by_cached_key(|x| (eval(x) * -1_000_000.0) as i64);
-
-            if print.print_scores() { println!("Generation: {i}, Score: {}", hyper_eval(&species[0], template, eval)); }
-
-            // Elitism
-            for j in 0..hyper_params.species_per_generation() {
-                // Elitism survivors
-                if j < hyper_params.elitism_survivors {
-                    new_species.push(species[j].clone());
-                }
-                // Elitism reproducers
-                if j + 1 < hyper_params.elitism_reproducers {
-                    for k in j + 1..hyper_params.elitism_reproducers {
-                        new_species.push(species[j].mate(&species[k], hyper_params.crossover_chance_per_gene, hyper_params.offspring_mutation_chance, hyper_params.offspring_mutation_randomness_weight));
-                    }
-                }
-                if j >= hyper_params.elitism_survivors && j + 1 >= hyper_params.elitism_reproducers {
-                    break;
-                }
-            }
-
-            // Random reproducers
-            for _ in 0..hyper_params.random_reproducers {
-                let idx = rng.gen_range(1..hyper_params.species_per_generation());
-                new_species.push(species[0].mate(&species[idx], hyper_params.crossover_chance_per_gene, hyper_params.offspring_mutation_chance, hyper_params.offspring_mutation_randomness_weight));
-            }
-
-            new_species.extend(gen_random_species(self, hyper_params.num_random_species, hyper_params.random_species_randomness_weight));
-
-            species = new_species;
-
-            generations = i;
-
-            // Species limit
-            if (i + 1) * hyper_params.species_per_generation() >= species_limit {
-                break;
-            }
-        }
-
-        species.sort_by_cached_key(|x| (eval(x) * -1_000_000.0) as i64);
-
-        if print.print_scores() { println!("Generation: {}, Score: {}", generations + 1, hyper_eval(&species[0], template, eval)); }
-        
-        species[0].clone()
-    }
-
     /// Simulates natural selection to optimize `self` for the given task.
     /// 
     /// The evaluator must be a function that takes a `Genome` with the same structure as `self` and returns a score (the greater, the better).
@@ -337,11 +279,21 @@ impl Genome {
     #[deprecated = "Use `Simulation::new()` instead"]
     #[inline]
     pub fn simulate(&self, generations: usize, species_limit: usize, eval: fn(&Genome) -> f64, hyper_params: SimHyperParams, parallellism: Parallelism, print: PrintSettings) -> Genome {
-        self.sim(generations, species_limit, eval, hyper_params, parallellism, print)
+        self.sim(generations, species_limit, Some(eval), None, hyper_params, parallellism, print)
     }
 
     #[inline]
-    pub fn sim(&self, mut generations: usize, mut species_limit: usize, eval: fn(&Genome) -> f64, hyper_params: SimHyperParams, parallellism: Parallelism, print: PrintSettings) -> Genome {
+    pub fn sim(&self, 
+        mut generations: usize, 
+        mut species_limit: usize, 
+        eval: Option<fn(&Genome) -> f64>, 
+        eval_with_util: Option<fn(&Genome, fn(Vec<f64>) -> f64) -> f64>,
+        hyper_params: SimHyperParams, 
+        parallellism: Parallelism, 
+        print: PrintSettings) -> Genome 
+    {
+        assert_ne!(eval.is_some(), eval_with_util.is_some());
+
         if generations == 0 { return self.clone(); }
         if species_limit == 0 { species_limit = usize::MAX }
 
@@ -367,12 +319,16 @@ impl Genome {
         for i in 1..generations {
             let mut new_species = Vec::default();
 
-            if multi {
-                sort_species(&mut species, eval);
+            if let Some(eval) = eval {
+                if multi { sort_species(&mut species, eval); }
+                else { species.sort_by_cached_key(|x| (eval(x) * -1_000_000.0) as i64); }
             }
             else {
-                species.sort_by_cached_key(|x| (eval(x) * -1_000_000.0) as i64);
+                if multi { sort_species(&mut species, eval); }
+                else { species.sort_by_cached_key(|x| (eval(x) * -1_000_000.0) as i64); }
             }
+
+
 
             if print.print_scores() { println!("Generation: {i}, Score: {}", eval(&species[0])); }
 
@@ -458,6 +414,30 @@ impl Genome {
 
 #[inline]
 fn sort_species(species: &mut Vec<Genome>, eval: fn(&Genome) -> f64) {
+    let (tx, rx)= mpsc::channel();
+
+    for k in 0..species.len() {
+        let thread_tx = tx.clone();
+        let spec = species[k].clone();
+
+        thread::spawn(move || {
+            thread_tx.send((k, eval(&spec))).unwrap();
+        });
+    }
+
+    let mut new = Vec::with_capacity(species.len());
+    for _ in 0..species.len() {
+        let recv = rx.recv().unwrap();
+        new.push((species[recv.0].clone(), recv.1));
+    }
+
+    new.sort_unstable_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
+    
+    *species = new.iter().map(|x| x.0.clone()).collect();
+}
+
+#[inline]
+fn sort_species_util(species: &mut Vec<Genome>, eval: fn(&Genome, fn(Vec<f64>) -> f64) -> f64) {
     let (tx, rx)= mpsc::channel();
 
     for k in 0..species.len() {

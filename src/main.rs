@@ -3,23 +3,26 @@ use genetic_optimization::prelude::*;
 
 fn main() {
     // polynomial a³ + b³ + c³ + j² + k² + l² + x + y + z
-    let genome = Genome::new(vec![
-        ("cubes", "a", Gene::new_with_range(1.0, -100.0, 100.0)),
-        ("cubes", "b", Gene::new_with_range(1.0, -100.0, 100.0)),
-        ("cubes", "c", Gene::new_with_range(1.0, -100.0, 100.0)),
-        ("squares", "j", Gene::new_with_range(1.0, -100.0, 100.0)),
-        ("squares", "k", Gene::new_with_range(1.0, -100.0, 100.0)),
-        ("squares", "l", Gene::new_with_range(1.0, -100.0, 100.0)),
-        ("lines", "x", Gene::new_with_range(1.0, -100.0, 100.0)),
-        ("lines", "y", Gene::new_with_range(1.0, -100.0, 100.0)),
-        ("lines", "z", Gene::new_with_range(1.0, -100.0, 100.0))
-    ]);
+    let genome = Genome::new()
+        .add_chromosome("cubes", Chromosome::new()
+            .add_gene("a", Gene::new_with_range(1.0, -100.0, 100.0))
+            .add_gene("b", Gene::new_with_range(1.0, -100.0, 100.0))
+            .add_gene("c", Gene::new_with_range(1.0, -100.0, 100.0)))
+        .add_chromosome("squares", Chromosome::new()
+            .add_gene("j", Gene::new_with_range(1.0, -100.0, 100.0))
+            .add_gene("k", Gene::new_with_range(1.0, -100.0, 100.0))
+            .add_gene("l", Gene::new_with_range(1.0, -100.0, 100.0)))
+        .add_chromosome("lines", Chromosome::new()
+            .add_gene("x", Gene::new_with_range(1.0, -100.0, 100.0))
+            .add_gene("y", Gene::new_with_range(1.0, -100.0, 100.0))
+            .add_gene("z", Gene::new_with_range(1.0, -100.0, 100.0)))
+        .build();
 
     Simulation::new()
-        .genome(genome)
+        .genome(&genome)
         .eval(close_to_42)
         .print_settings(PrintSettings::PrintFull)
-        .run(10);
+        .run(1000);
 }
 
 fn close_to_42(genome: &Genome) -> f64 {

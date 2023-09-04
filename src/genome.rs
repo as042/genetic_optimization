@@ -24,6 +24,11 @@ pub struct Genome {
     chromosomes: HashMap<String, Chromosome>
 }
 
+// #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+// struct GenomeBuilder {
+//     chromosomes: Vec<
+// }
+
 impl Genome {
     /// Creates a new `Genome` with the given genes.
     /// 
@@ -35,14 +40,21 @@ impl Genome {
     /// let genome = Genome::new(vec![("chromosome_label", "gene_label", Gene::default())]);
     /// ```
     #[inline]
-    pub fn new(genes: Vec<(&str, &str, Gene)>) -> Self {
-        let mut genome = Self { 
-            ..Default::default()
-        };
+    pub fn new() -> Self {
+        Self::default()
+    }
 
-        genome.insert_genes(genes);
+    /// Adds a chromosome to `self` and returns `self`.
+    #[inline]
+    pub fn add_chromosome(&mut self, chromo_name: impl Into<String>, chromo: &Chromosome) -> &mut Self {
+        self.insert_chromosome(chromo_name.into(), chromo.clone());
+        self
+    }
 
-        genome
+    /// Builds `self` and returns an owned value.
+    #[inline]
+    pub fn build(&mut self) -> Self {
+        self.to_owned()
     }
 
     /// Returns the specified chromosome, if it exists.
@@ -57,8 +69,8 @@ impl Genome {
     /// assert!(chromo.is_some());
     /// ```
     #[inline]
-    pub fn chromosome(&self, chromo_name: &str) -> Option<&Chromosome> {
-        self.chromosomes.get(chromo_name)
+    pub fn chromosome(&self, chromo_name: impl Into<String>) -> Option<&Chromosome> {
+        self.chromosomes.get(&chromo_name.into())
     }
 
     /// Returns the specified gene, if it exists.
@@ -73,7 +85,7 @@ impl Genome {
     /// assert!(gene.is_some());
     /// ```
     #[inline]
-    pub fn gene(&self, chromo_name: &str, gene_name: &str) -> Option<&Gene> {
+    pub fn gene(&self, chromo_name: impl Into<String>, gene_name: impl Into<String>) -> Option<&Gene> {
         self.chromosome(chromo_name)?.gene(gene_name)
     }
 
@@ -105,12 +117,12 @@ impl Genome {
     /// assert_eq!(genes[0].2.value(), 0.0);
     /// ```
     #[inline]
-    pub fn genes(&self) -> Vec<(&str, &str, Gene)> {
+    pub fn genes(&self) -> Vec<(String, String, Gene)> {
         let mut genes = Vec::default();
 
         for chromo in self.chromosomes() {
             for gene in chromo.1.genes() {
-                genes.push((chromo.0.as_str(), gene.0.as_str(), gene.1.clone()));
+                genes.push((chromo.0.to_owned(), gene.0.to_owned(), gene.1.clone()));
             }
             
         }        
@@ -129,8 +141,8 @@ impl Genome {
     /// genome.insert_chromosome("examples2", Chromosome::default());
     /// ```
     #[inline]
-    pub fn insert_chromosome(&mut self, chromo_name: &str, chromo: Chromosome) {
-        self.chromosomes.insert(chromo_name.to_string(), chromo);
+    pub fn insert_chromosome(&mut self, chromo_name: impl Into<String>, chromo: Chromosome) {
+        self.chromosomes.insert(chromo_name.into(), chromo);
     }
 
     /// Inserts all given chromosomes into `self`.
@@ -144,7 +156,7 @@ impl Genome {
     /// genome.insert_chromosomes(vec![("examples2", Chromosome::default()), ("examples3", Chromosome::default())]);
     /// ```
     #[inline]
-    pub fn insert_chromosomes(&mut self, chromos: Vec<(&str, Chromosome)>) {
+    pub fn insert_chromosomes(&mut self, chromos: Vec<(impl Into<String>, Chromosome)>) {
         for chromo in chromos {
             self.insert_chromosome(chromo.0, chromo.1);
         }
@@ -161,13 +173,13 @@ impl Genome {
     /// genome.insert_genes(vec!["chromosome_label", "gene_label", Gene::default()]);
     /// ```
     #[inline]
-    pub fn insert_genes(&mut self, genes: Vec<(&str, &str, Gene)>) {
+    pub fn insert_genes(&mut self, genes: Vec<(impl Into<String> + Clone, impl Into<String>, Gene)>) {
         for gene in genes {
-            if !self.chromosomes.contains_key(gene.0) {
-                self.insert_chromosome(&gene.0, Chromosome::new());
+            if !self.chromosomes.contains_key(&gene.0.clone().into()) {
+                self.insert_chromosome(&gene.0.clone().into(), Chromosome::new());
             }
 
-            self.chromosomes.get_mut(gene.0).unwrap().insert_gene(&gene.1, gene.2);
+            self.chromosomes.get_mut(&gene.0.into()).unwrap().insert_gene(&gene.1.into(), gene.2);
         }
     }
 
@@ -183,8 +195,8 @@ impl Genome {
     /// assert!(genome.gene("examples", "example1").is_none());
     /// ```
     #[inline]
-    pub fn set_chromosome(&mut self, chromo_name: &str, chromo: Chromosome) -> Result<(), &str> {
-        *self.chromosomes.get_mut(chromo_name).ok_or("No chromosome by that name exists")? = chromo;
+    pub fn set_chromosome(&mut self, chromo_name: impl Into<String>, chromo: Chromosome) -> Result<(), String> {
+        *self.chromosomes.get_mut(&chromo_name.into()).ok_or("No chromosome by that name exists")? = chromo;
 
         Ok(())
     }
@@ -201,13 +213,13 @@ impl Genome {
     /// assert_eq!(genome.gene("examples", "example1").unwrap().value(), 0.0);
     /// ```
     #[inline]
-    pub fn set_gene(&mut self, chromo_name: &str, gene_name: &str, gene: Gene) -> Result<(), &str> {
-        self.chromosomes.get_mut(chromo_name).ok_or("No chromosome by that name exists")?.set_gene(gene_name, gene)
+    pub fn set_gene(&mut self, chromo_name: impl Into<String>, gene_name: impl Into<String>, gene: Gene) -> Result<(), impl Into<String>> {
+        self.chromosomes.get_mut(&chromo_name.into()).ok_or("No chromosome by that name exists")?.set_gene(gene_name, gene)
     }
 
     /// Saves `self` to file.
     #[inline]
-    pub fn save(&self, path: impl AsRef<Path>) -> Result<(), &str> {
+    pub fn save(&self, path: impl AsRef<Path>) -> Result<(), String> {
         let data = toml::to_string_pretty(self).ok().ok_or("Could not convert to toml")?;
 
         let mut file = OpenOptions::new()
