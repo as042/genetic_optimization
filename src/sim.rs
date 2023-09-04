@@ -229,6 +229,87 @@ impl PrintSettings {
 }
 
 impl Genome {
+    /// Trains the GA itself to best be able to tackle the given problem.
+    #[deprecated = "Not properly working"]
+    #[inline]
+    pub fn hyper_simulate(&self, generations: usize, eval: fn(&Genome) -> f64, hyper_params: SimHyperParams, print: PrintSettings) -> Genome {
+        let hyper_genome = Genome::new()
+            .add_chromosome("species", Chromosome::new()
+                .add_gene("elitism_survivors", Gene::new_with_range(1.0, 0.0, 100.0))
+                .add_gene("elitism_reproducers", Gene::new_with_range(13.0, 0.0, 20.0))
+                .add_gene("random_reproducers", Gene::new_with_range(11.0, 0.0, 100.0))
+                .add_gene("num_random_species", Gene::new_with_range(10.0, 0.0, 100.0)))
+            .add_chromosome("recombination", Chromosome::new()
+                .add_gene("crossover_chance_per_gene", Gene::new_with_range(0.1, 0.0, 1.0))
+                .add_gene("offspring_mutation_chance", Gene::new_with_range(0.1, 0.0, 1.0))
+                .add_gene("offspring_mutation_randomness_weight", Gene::new_with_range(0.25, 0.0, 1.0)))
+            .add_chromosome("random_species", Chromosome::new()
+                .add_gene("random_species_randomness_weight", Gene::new_with_range(1.0, 0.0, 1.0)))
+            .build();
+
+        hyper_genome.hyper_sim(self, generations, 0, eval, hyper_params, print)
+    }
+
+    #[inline]
+    fn hyper_sim(&self, template: &Genome, mut generations: usize, species_limit: usize, eval: fn(&Genome) -> f64, hyper_params: SimHyperParams, print: PrintSettings) -> Genome {
+        if generations == 0 { return self.clone(); }
+
+        let mut rng = rand::thread_rng();
+
+        // Generation 1
+        let mut species = gen_random_species(self, hyper_params.species_per_generation() - 1, hyper_params.random_species_randomness_weight);
+        species.push(self.clone());
+
+        // Generations 2+
+        for i in 1..generations {
+            let mut new_species = Vec::default();
+
+            species.sort_by_cached_key(|x| (eval(x) * -1_000_000.0) as i64);
+
+            if print.print_scores() { println!("Generation: {i}, Score: {}", hyper_eval(&species[0], template, eval)); }
+
+            // Elitism
+            for j in 0..hyper_params.species_per_generation() {
+                // Elitism survivors
+                if j < hyper_params.elitism_survivors {
+                    new_species.push(species[j].clone());
+                }
+                // Elitism reproducers
+                if j + 1 < hyper_params.elitism_reproducers {
+                    for k in j + 1..hyper_params.elitism_reproducers {
+                        new_species.push(species[j].mate(&species[k], hyper_params.crossover_chance_per_gene, hyper_params.offspring_mutation_chance, hyper_params.offspring_mutation_randomness_weight));
+                    }
+                }
+                if j >= hyper_params.elitism_survivors && j + 1 >= hyper_params.elitism_reproducers {
+                    break;
+                }
+            }
+
+            // Random reproducers
+            for _ in 0..hyper_params.random_reproducers {
+                let idx = rng.gen_range(1..hyper_params.species_per_generation());
+                new_species.push(species[0].mate(&species[idx], hyper_params.crossover_chance_per_gene, hyper_params.offspring_mutation_chance, hyper_params.offspring_mutation_randomness_weight));
+            }
+
+            new_species.extend(gen_random_species(self, hyper_params.num_random_species, hyper_params.random_species_randomness_weight));
+
+            species = new_species;
+
+            generations = i;
+
+            // Species limit
+            if (i + 1) * hyper_params.species_per_generation() >= species_limit {
+                break;
+            }
+        }
+
+        species.sort_by_cached_key(|x| (eval(x) * -1_000_000.0) as i64);
+
+        if print.print_scores() { println!("Generation: {}, Score: {}", generations + 1, hyper_eval(&species[0], template, eval)); }
+        
+        species[0].clone()
+    }
+
     /// Simulates natural selection to optimize `self` for the given task.
     /// 
     /// The evaluator must be a function that takes a `Genome` with the same structure as `self` and returns a score (the greater, the better).
