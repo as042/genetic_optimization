@@ -9,6 +9,7 @@ pub struct Simulation {
     species_limit: usize,
     eval: Option<fn(&Genome) -> f64>,
     eval_with_util: Option<fn(&Genome, fn(Vec<f64>) -> f64) -> f64>,
+    util: Option<fn(Vec<f64>) -> f64>,
     hyper_params: SimHyperParams,
     parallelism: Parallelism,
     print_settings: PrintSettings,
@@ -47,15 +48,16 @@ impl Simulation {
         self
     }
 
-    /// Adds an evaluation function with an additional parameter to `self`. An evaluation function is required.
+    /// Adds an evaluation function with an additional util function to `self`. An evaluation function is required.
     /// 
     /// # Panics
     /// Will panic if `self.eval()` has already been run.
     #[inline]
-    pub fn eval_with_util(&mut self, eval: fn(&Genome, fn(Vec<f64>) -> f64) -> f64) -> &mut Self {
+    pub fn eval_with_util(&mut self, eval: fn(&Genome, fn(Vec<f64>) -> f64) -> f64, util: fn(Vec<f64>) -> f64) -> &mut Self {
         assert!(self.eval.is_none());
 
         self.eval_with_util = Some(eval);
+        self.util = Some(util);
         self
     }
 
@@ -80,17 +82,70 @@ impl Simulation {
         self
     }
 
-    /// Runs the simulation using the configuration in `self`.
+    /// Runs the simulation using the configuration in `self`, optimizing the parameter for the specified task.
+    /// The evaluator must be a function that takes a `Genome` with the same structure as `self` and returns a score (the greater, the better).
     /// 
     /// # Panics
     /// 
     /// This function will panic if no genome or evaluation function is given.
+    /// 
+    /// # Examples
+    /// 
+    /// ```
+    /// use genetic_optimization::prelude::*;
+    /// 
+    /// // polynomial a³ + b³ + c³ + j² + k² + l² + x + y + z
+    /// let genome = Genome::new()
+    ///     .add_chromosome("cubes", Chromosome::new()
+    ///         .add_gene("a", Gene::new_with_range(1.0, -100.0, 100.0))
+    ///         .add_gene("b", Gene::new_with_range(1.0, -100.0, 100.0))
+    ///         .add_gene("c", Gene::new_with_range(1.0, -100.0, 100.0)))
+    ///     .add_chromosome("squares", Chromosome::new()
+    ///         .add_gene("j", Gene::new_with_range(1.0, -100.0, 100.0))
+    ///         .add_gene("k", Gene::new_with_range(1.0, -100.0, 100.0))
+    ///         .add_gene("l", Gene::new_with_range(1.0, -100.0, 100.0)))
+    ///     .add_chromosome("lines", Chromosome::new()
+    ///         .add_gene("x", Gene::new_with_range(1.0, -100.0, 100.0))
+    ///         .add_gene("y", Gene::new_with_range(1.0, -100.0, 100.0))
+    ///         .add_gene("z", Gene::new_with_range(1.0, -100.0, 100.0)))
+    ///     .build();
+    /// 
+    /// // this will tell the simulator how to evaluate species
+    /// fn close_to_42(genome: &Genome) -> f64 {
+    ///     // variable bindings
+    ///     let a = genome.gene("cubes", "a").unwrap().value();
+    ///     let b = genome.gene("cubes", "b").unwrap().value();
+    ///     let c = genome.gene("cubes", "c").unwrap().value();
+    ///     let j = genome.gene("squares", "j").unwrap().value();
+    ///     let k = genome.gene("squares", "k").unwrap().value();
+    ///     let l = genome.gene("squares", "l").unwrap().value();
+    ///     let x = genome.gene("lines", "x").unwrap().value();
+    ///     let y = genome.gene("lines", "y").unwrap().value();
+    ///     let z = genome.gene("lines", "z").unwrap().value();
+    ///
+    ///     // polynomial from earlier
+    ///     let sum = a.powi(3) + b.powi(3) + c.powi(3) + j.powi(2) + k.powi(2) + l.powi(2) + x + y + z;
+    ///
+    ///     // score is correlated to distance from 42
+    ///     // best possible score is 1.0
+    ///     -0.1 * (sum - 42.0).abs() + 1.0
+    /// }
+    /// 
+    /// // simulate 100 generations of optimization 
+    /// let optimized = Simulation::new()
+    ///     .genome(&genome)
+    ///     .eval(close_to_42)
+    ///     .print_settings(PrintSettings::PrintFull)
+    ///     .run(100);
+    /// 
+    /// assert_eq!(optimized.genes().len(), genome.genes().len());
+    /// ```
     #[inline]
     pub fn run(&self, generations: usize) -> Genome {
         assert!(self.genome.is_some());
-        assert!(self.eval.is_some());
+        assert_ne!(self.eval.is_some(), self.eval_with_util.is_some());
 
-        self.genome.clone().unwrap().sim(generations, self.species_limit, self.eval.unwrap(), self.hyper_params, self.parallelism, self.print_settings)
+        self.genome.clone().unwrap().sim(generations, self.species_limit, self.eval, self.eval_with_util, self.util, self.hyper_params, self.parallelism, self.print_settings)
     }
 }
 
@@ -109,45 +164,6 @@ pub struct SimHyperParams {
 }
 
 impl SimHyperParams {
-    /// Returns the default `SimHyperParams` for use in `hyper_simulate()`.
-    #[inline]
-    pub fn meta_hyper() -> Self {
-        SimHyperParams {
-            elitism_survivors: 3,
-            elitism_reproducers: 3,
-            random_reproducers: 2,
-            num_random_species: 2,
-            crossover_chance_per_gene: 0.1,
-            offspring_mutation_chance: 0.1,
-            offspring_mutation_randomness_weight: 0.25,
-            random_species_randomness_weight: 0.5,
-        }
-    }
-
-    /// Creates a `SimHyperParams` from `Genome`.
-    #[inline]
-    pub fn from_genome(genome: &Genome) -> Self {
-        let elitism_survivors = genome.gene("species", "elitism_survivors").unwrap().value();
-        let elitism_reproducers = genome.gene("species", "elitism_reproducers").unwrap().value();
-        let random_reproducers = genome.gene("species", "random_reproducers").unwrap().value();
-        let num_random_species = genome.gene("species", "num_random_species").unwrap().value();
-        let crossover_chance_per_gene = genome.gene("recombination", "crossover_chance_per_gene").unwrap().value();
-        let offspring_mutation_chance = genome.gene("recombination", "offspring_mutation_chance").unwrap().value();
-        let offspring_mutation_randomness_weight = genome.gene("recombination", "offspring_mutation_randomness_weight").unwrap().value();
-        let random_species_randomness_weight = genome.gene("random_species", "random_species_randomness_weight").unwrap().value();
-    
-        SimHyperParams {
-            elitism_survivors: elitism_survivors.round() as usize,
-            elitism_reproducers: elitism_reproducers.round() as usize,
-            random_reproducers: random_reproducers.round() as usize,
-            num_random_species: num_random_species.round() as usize,
-            crossover_chance_per_gene,
-            offspring_mutation_chance,
-            offspring_mutation_randomness_weight,
-            random_species_randomness_weight,
-        }
-    }
-
     /// Returns the number of species a generation will have if a simulation is run using `self`.
     #[inline]
     pub fn species_per_generation(&self) -> usize {
@@ -181,7 +197,15 @@ pub enum Parallelism {
 
 impl Parallelism {
     #[inline]
-    fn is_multi(&self, eval: fn(&Genome) -> f64, template: &Genome, species_per_generation: usize) -> bool {
+    fn is_multi(
+        &self, 
+        eval: Option<fn(&Genome) -> f64>, 
+        eval_with_util: Option<fn(&Genome, fn(Vec<f64>) -> f64) -> f64>, 
+        util: Option<fn(Vec<f64>) -> f64>, 
+        template: &Genome, 
+        species_per_generation: usize
+    ) -> bool 
+    {
         if self == &Self::Single { return false; }
         else if self == &Self::Multi { return true; }
         else {
@@ -190,12 +214,22 @@ impl Parallelism {
 
             let inst = Instant::now();
 
-            species.sort_by_cached_key(|x| (eval(x) * -1_000_000.0) as i64);
+            if let Some(eval) = eval {
+                species.sort_by_cached_key(|x| (eval(x) * -1_000_000.0) as i64);
+            }
+            else {
+                species.sort_by_cached_key(|x| (eval_with_util.unwrap()(x, util.unwrap()) * -1_000_000.0) as i64);
+            }
 
             let time = inst.elapsed().as_nanos();
             let inst = Instant::now();
 
-            sort_species(&mut species2, eval);
+            if let Some(eval) = eval {
+                sort_species(&mut species2, eval);
+            }
+            else {
+                sort_species_util(&mut species2, eval_with_util.unwrap(), util.unwrap());
+            }
 
             let time2 = inst.elapsed().as_nanos();
 
@@ -229,160 +263,51 @@ impl PrintSettings {
 }
 
 impl Genome {
-    /// Trains the GA itself to best be able to tackle the given problem.
-    #[deprecated = "Not properly working"]
-    #[inline]
-    pub fn hyper_simulate(&self, generations: usize, eval: fn(&Genome) -> f64, hyper_params: SimHyperParams, print: PrintSettings) -> Genome {
-        let hyper_genome = Genome::new()
-            .add_chromosome("species", Chromosome::new()
-                .add_gene("elitism_survivors", Gene::new_with_range(1.0, 0.0, 100.0))
-                .add_gene("elitism_reproducers", Gene::new_with_range(13.0, 0.0, 20.0))
-                .add_gene("random_reproducers", Gene::new_with_range(11.0, 0.0, 100.0))
-                .add_gene("num_random_species", Gene::new_with_range(10.0, 0.0, 100.0)))
-            .add_chromosome("recombination", Chromosome::new()
-                .add_gene("crossover_chance_per_gene", Gene::new_with_range(0.1, 0.0, 1.0))
-                .add_gene("offspring_mutation_chance", Gene::new_with_range(0.1, 0.0, 1.0))
-                .add_gene("offspring_mutation_randomness_weight", Gene::new_with_range(0.25, 0.0, 1.0)))
-            .add_chromosome("random_species", Chromosome::new()
-                .add_gene("random_species_randomness_weight", Gene::new_with_range(1.0, 0.0, 1.0)))
-            .build();
-
-        hyper_genome.hyper_sim(self, generations, 0, eval, hyper_params, print)
-    }
-
-    #[inline]
-    fn hyper_sim(&self, template: &Genome, mut generations: usize, species_limit: usize, eval: fn(&Genome) -> f64, hyper_params: SimHyperParams, print: PrintSettings) -> Genome {
-        if generations == 0 { return self.clone(); }
-
-        let mut rng = rand::thread_rng();
-
-        // Generation 1
-        let mut species = gen_random_species(self, hyper_params.species_per_generation() - 1, hyper_params.random_species_randomness_weight);
-        species.push(self.clone());
-
-        // Generations 2+
-        for i in 1..generations {
-            let mut new_species = Vec::default();
-
-            species.sort_by_cached_key(|x| (eval(x) * -1_000_000.0) as i64);
-
-            if print.print_scores() { println!("Generation: {i}, Score: {}", hyper_eval(&species[0], template, eval)); }
-
-            // Elitism
-            for j in 0..hyper_params.species_per_generation() {
-                // Elitism survivors
-                if j < hyper_params.elitism_survivors {
-                    new_species.push(species[j].clone());
-                }
-                // Elitism reproducers
-                if j + 1 < hyper_params.elitism_reproducers {
-                    for k in j + 1..hyper_params.elitism_reproducers {
-                        new_species.push(species[j].mate(&species[k], hyper_params.crossover_chance_per_gene, hyper_params.offspring_mutation_chance, hyper_params.offspring_mutation_randomness_weight));
-                    }
-                }
-                if j >= hyper_params.elitism_survivors && j + 1 >= hyper_params.elitism_reproducers {
-                    break;
-                }
-            }
-
-            // Random reproducers
-            for _ in 0..hyper_params.random_reproducers {
-                let idx = rng.gen_range(1..hyper_params.species_per_generation());
-                new_species.push(species[0].mate(&species[idx], hyper_params.crossover_chance_per_gene, hyper_params.offspring_mutation_chance, hyper_params.offspring_mutation_randomness_weight));
-            }
-
-            new_species.extend(gen_random_species(self, hyper_params.num_random_species, hyper_params.random_species_randomness_weight));
-
-            species = new_species;
-
-            generations = i;
-
-            // Species limit
-            if (i + 1) * hyper_params.species_per_generation() >= species_limit {
-                break;
-            }
-        }
-
-        species.sort_by_cached_key(|x| (eval(x) * -1_000_000.0) as i64);
-
-        if print.print_scores() { println!("Generation: {}, Score: {}", generations + 1, hyper_eval(&species[0], template, eval)); }
-        
-        species[0].clone()
-    }
-
     /// Simulates natural selection to optimize `self` for the given task.
     /// 
     /// The evaluator must be a function that takes a `Genome` with the same structure as `self` and returns a score (the greater, the better).
-    /// 
-    /// # Examples
-    /// 
-    /// ```
-    /// use genetic_optimization::prelude::*;
-    /// 
-    /// // polynomial a³ + b³ + c³ + j² + k² + l² + x + y + z
-    /// let genome = Genome::new(vec![
-    ///     ("cubes", "a", Gene::new_with_range(1.0, -100.0, 100.0)),
-    ///     ("cubes", "b", Gene::new_with_range(1.0, -100.0, 100.0)),
-    ///     ("cubes", "c", Gene::new_with_range(1.0, -100.0, 100.0)),
-    ///     ("squares", "j", Gene::new_with_range(1.0, -100.0, 100.0)),
-    ///     ("squares", "k", Gene::new_with_range(1.0, -100.0, 100.0)),
-    ///     ("squares", "l", Gene::new_with_range(1.0, -100.0, 100.0)),
-    ///     ("lines", "x", Gene::new_with_range(1.0, -100.0, 100.0)),
-    ///     ("lines", "y", Gene::new_with_range(1.0, -100.0, 100.0)),
-    ///     ("lines", "z", Gene::new_with_range(1.0, -100.0, 100.0)),
-    /// ]);
-    /// 
-    /// // this will tell the simulator how to evaluate species
-    /// fn close_to_42(genome: &Genome) -> f64 {
-    ///     // variable bindings
-    ///     let a = genome.gene("cubes", "a").unwrap().value();
-    ///     let b = genome.gene("cubes", "b").unwrap().value();
-    ///     let c = genome.gene("cubes", "c").unwrap().value();
-    ///     let j = genome.gene("squares", "j").unwrap().value();
-    ///     let k = genome.gene("squares", "k").unwrap().value();
-    ///     let l = genome.gene("squares", "l").unwrap().value();
-    ///     let x = genome.gene("lines", "x").unwrap().value();
-    ///     let y = genome.gene("lines", "y").unwrap().value();
-    ///     let z = genome.gene("lines", "z").unwrap().value();
-    ///
-    ///     // polynomial from earlier
-    ///     let sum = a.powi(3) + b.powi(3) + c.powi(3) + j.powi(2) + k.powi(2) + l.powi(2) + x + y + z;
-    ///
-    ///     // score is correlated to distance from 42
-    ///     // best possible score is 1.0
-    ///     -0.1 * (sum - 42.0).abs() + 1.0
-    /// }
-    /// 
-    /// // simulate 100 generations of optimization 
-    /// let optimized = genome.simulate(100, 0 close_to_42, SimHyperParams::default(), false, false);
-    /// assert_eq!(optimized.genes().len(), genome.genes().len());
-    /// ```
     #[deprecated = "Use `Simulation::new()` instead"]
     #[inline]
-    pub fn simulate(&self, generations: usize, species_limit: usize, eval: fn(&Genome) -> f64, hyper_params: SimHyperParams, parallellism: Parallelism, print: PrintSettings) -> Genome {
-        self.sim(generations, species_limit, Some(eval), None, hyper_params, parallellism, print)
+    pub fn simulate(
+        &self, 
+        generations: usize, 
+        species_limit: usize, 
+        eval: Option<fn(&Genome) -> f64>, 
+        eval_with_util: Option<fn(&Genome, fn(Vec<f64>) -> f64) -> f64>,
+        util: Option<fn(Vec<f64>) -> f64>,
+        hyper_params: SimHyperParams, 
+        parallellism: Parallelism, 
+        print: PrintSettings
+    ) -> Genome 
+    {
+        self.sim(generations, species_limit, eval, eval_with_util, util, hyper_params, parallellism, print)
     }
 
     #[inline]
-    pub fn sim(&self, 
+    pub fn sim(
+        &self, 
         mut generations: usize, 
         mut species_limit: usize, 
         eval: Option<fn(&Genome) -> f64>, 
         eval_with_util: Option<fn(&Genome, fn(Vec<f64>) -> f64) -> f64>,
+        util: Option<fn(Vec<f64>) -> f64>,
         hyper_params: SimHyperParams, 
         parallellism: Parallelism, 
-        print: PrintSettings) -> Genome 
+        print: PrintSettings
+    ) -> Genome 
     {
         assert_ne!(eval.is_some(), eval_with_util.is_some());
+        assert_eq!(eval_with_util.is_some(), util.is_some());
 
         if generations == 0 { return self.clone(); }
         if species_limit == 0 { species_limit = usize::MAX }
 
         let mut rng = rand::thread_rng();
 
+        // Parallelism
         let inst = Instant::now();
         if print == PrintSettings::PrintFull { println!("Determining parallelism option..."); }
-        let multi = parallellism.is_multi(eval, self, hyper_params.species_per_generation());
+        let multi = parallellism.is_multi(eval, eval_with_util, util, self, hyper_params.species_per_generation());
         if print == PrintSettings::PrintFull { 
             if multi {
                 println!("Option `Multi` chosen after {}s", inst.elapsed().as_secs_f32());
@@ -400,18 +325,19 @@ impl Genome {
         for i in 1..generations {
             let mut new_species = Vec::default();
 
+            // Sorting
             if let Some(eval) = eval {
                 if multi { sort_species(&mut species, eval); }
                 else { species.sort_by_cached_key(|x| (eval(x) * -1_000_000.0) as i64); }
             }
             else {
-                if multi { sort_species(&mut species, eval); }
-                else { species.sort_by_cached_key(|x| (eval(x) * -1_000_000.0) as i64); }
+                if multi { sort_species_util(&mut species, eval_with_util.unwrap(), util.unwrap()); }
+                else { species.sort_by_cached_key(|x| (eval_with_util.unwrap()(x, util.unwrap()) * -1_000_000.0) as i64); }
             }
 
-
-
-            if print.print_scores() { println!("Generation: {i}, Score: {}", eval(&species[0])); }
+            // Printing
+            if let Some(eval) = eval { if print.print_scores() { println!("Generation: {i}, Score: {}", eval(&species[0])); }}
+            else { if print.print_scores() { println!("Generation: {i}, Score: {}", eval_with_util.unwrap()(&species[0], util.unwrap())); }}
 
             // Elitism
             for j in 0..hyper_params.species_per_generation() {
@@ -448,14 +374,19 @@ impl Genome {
             }
         }
 
-        if multi {
-            sort_species(&mut species, eval);
+        // Sorting
+        if let Some(eval) = eval {
+            if multi { sort_species(&mut species, eval); }
+            else { species.sort_by_cached_key(|x| (eval(x) * -1_000_000.0) as i64); }
         }
         else {
-            species.sort_by_cached_key(|x| (eval(x) * -1_000_000.0) as i64);
+            if multi { sort_species_util(&mut species, eval_with_util.unwrap(), util.unwrap()); }
+            else { species.sort_by_cached_key(|x| (eval_with_util.unwrap()(x, util.unwrap()) * -1_000_000.0) as i64); }
         }
 
-        if print.print_scores() { println!("Generation: {}, Score: {}", generations + 1, eval(&species[0])); }
+        // Printing
+        if let Some(eval) = eval { if print.print_scores() { println!("Generation: {}, Score: {}", generations + 1, eval(&species[0])); }}
+        else { if print.print_scores() { println!("Generation: {}, Score: {}", generations + 1, eval_with_util.unwrap()(&species[0], util.unwrap())); }}
         
         species[0].clone()
     }
@@ -518,7 +449,7 @@ fn sort_species(species: &mut Vec<Genome>, eval: fn(&Genome) -> f64) {
 }
 
 #[inline]
-fn sort_species_util(species: &mut Vec<Genome>, eval: fn(&Genome, fn(Vec<f64>) -> f64) -> f64) {
+fn sort_species_util(species: &mut Vec<Genome>, eval: fn(&Genome, fn(Vec<f64>) -> f64) -> f64, util: fn(Vec<f64>) -> f64) {
     let (tx, rx)= mpsc::channel();
 
     for k in 0..species.len() {
@@ -526,7 +457,7 @@ fn sort_species_util(species: &mut Vec<Genome>, eval: fn(&Genome, fn(Vec<f64>) -
         let spec = species[k].clone();
 
         thread::spawn(move || {
-            thread_tx.send((k, eval(&spec))).unwrap();
+            thread_tx.send((k, eval(&spec, util))).unwrap();
         });
     }
 
@@ -554,16 +485,4 @@ fn gen_random_species(template: &Genome, num: usize, randomness_weight: f64) -> 
     }
 
     species
-}
-
-#[inline]
-fn hyper_eval(genome: &Genome, template: &Genome, eval: fn(&Genome) -> f64) -> f64 {
-    let hyper_params = SimHyperParams::from_genome(genome);
-
-    let mut score = 0.0;
-    for _ in 0..32 {
-        score += eval(&template.sim(50, 10000, eval, hyper_params, Parallelism::default(), PrintSettings::NoPrint));
-    }
-
-    score / 32.0
 }

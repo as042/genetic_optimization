@@ -10,24 +10,23 @@ use crate::prelude::*;
 /// ```
 /// use genetic_optimization::prelude::*;
 /// 
-/// let animal = Genome::new(vec![
-///     ("eyes", "green", Gene::new(0.5)),
-///     ("eyes", "vision_quality", Gene::new(0.9)),
-///     ("behavior", "aggressiveness", Gene::new(0.2)),
-///     ("behavior", "food_motivation", Gene::new(1.0))
-/// ]);
+/// let animal = Genome::new()
+///     .add_chromosome("eyes", Chromosome::new()
+///         .add_gene("green", Gene::new(0.5))
+///         .add_gene("vision_quality", Gene::new(0.9)))
+///     .add_chromosome("behavior", Chromosome::new()
+///         .add_gene("aggressiveness", Gene::new(0.2))
+///         .add_gene("food_motivation", Gene::new(1.0)))
+///     .build();
 /// 
-/// let alpha_specimen = animal.simulate(100, 0, survivability_evaluator, SimHyperParams::default(), Parallelism::default(), false);
-/// ```
+/// let alpha_specimen = Simulation::new()
+///     .genome(&animal)
+///     .eval(survivability)
+///     .run(100);
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct Genome {
     chromosomes: HashMap<String, Chromosome>
 }
-
-// #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
-// struct GenomeBuilder {
-//     chromosomes: Vec<
-// }
 
 impl Genome {
     /// Creates a new `Genome` with the given genes.
@@ -37,7 +36,16 @@ impl Genome {
     /// ```
     /// use genetic_optimization::prelude::*;
     /// 
-    /// let genome = Genome::new(vec![("chromosome_label", "gene_label", Gene::default())]);
+    /// let animal = Genome::new()
+    ///     .add_chromosome("eyes", Chromosome::new()
+    ///         .add_gene("green", Gene::new(0.5))
+    ///         .add_gene("vision_quality", Gene::new(0.9)))
+    ///     .add_chromosome("behavior", Chromosome::new()
+    ///         .add_gene("aggressiveness", Gene::new(0.2))
+    ///         .add_gene("food_motivation", Gene::new(1.0)))
+    ///     .build();
+    /// 
+    /// assert!(animal.genes().len() > 0);
     /// ```
     #[inline]
     pub fn new() -> Self {
@@ -58,64 +66,24 @@ impl Genome {
     }
 
     /// Returns the specified chromosome, if it exists.
-    /// 
-    /// # Examples
-    /// 
-    /// ```
-    /// use genetic_optimization::prelude::*;
-    /// 
-    /// let genome = Genome::new(vec![("chromosome_label", "gene_label", Gene::default())]);
-    /// let chromo = genome.chromosome("chromosome_label");
-    /// assert!(chromo.is_some());
-    /// ```
     #[inline]
     pub fn chromosome(&self, chromo_name: impl Into<String>) -> Option<&Chromosome> {
         self.chromosomes.get(&chromo_name.into())
     }
 
     /// Returns the specified gene, if it exists.
-    /// 
-    /// # Examples
-    /// 
-    /// ```
-    /// use genetic_optimization::prelude::*;
-    /// 
-    /// let genome = Genome::new(vec![("chromosome_label", "gene_label", Gene::default())]);
-    /// let gene = genome.gene("chromosome_label", "gene_label");
-    /// assert!(gene.is_some());
-    /// ```
     #[inline]
     pub fn gene(&self, chromo_name: impl Into<String>, gene_name: impl Into<String>) -> Option<&Gene> {
         self.chromosome(chromo_name)?.gene(gene_name)
     }
 
     /// Returns a reference to `self.chromosomes`.
-    /// 
-    /// # Examples
-    /// 
-    /// ```
-    /// use genetic_optimization::prelude::*;
-    /// 
-    /// let genome = Genome::new(vec![("chromosome_label", "gene_label", Gene::default())]);
-    /// let chromosomes = genome.chromosomes();
-    /// assert!(chromosomes.contains_key("chromosome_label"));
-    /// ```
     #[inline]
     pub fn chromosomes(&self) -> &HashMap<String, Chromosome> {
         &self.chromosomes
     }
     
     /// Returns a list of all genes, their labels, and their containers' labels.
-    /// 
-    /// # Examples
-    /// 
-    /// ```
-    /// use genetic_optimization::prelude::*;
-    /// 
-    /// let genome = Genome::new(vec![("chromosome_label", "gene_label", Gene::default())]);
-    /// let genes = genome.genes();
-    /// assert_eq!(genes[0].2.value(), 0.0);
-    /// ```
     #[inline]
     pub fn genes(&self) -> Vec<(String, String, Gene)> {
         let mut genes = Vec::default();
@@ -131,30 +99,12 @@ impl Genome {
     }
 
     /// Inserts a `Gene` into `self`.
-    /// 
-    /// # Examples
-    /// 
-    /// ```
-    /// use genetic_optimization::prelude::*;
-    /// 
-    /// let mut genome = Genome::new(vec![("examples", "example1", Gene::default())]);
-    /// genome.insert_chromosome("examples2", Chromosome::default());
-    /// ```
     #[inline]
     pub fn insert_chromosome(&mut self, chromo_name: impl Into<String>, chromo: Chromosome) {
         self.chromosomes.insert(chromo_name.into(), chromo);
     }
 
     /// Inserts all given chromosomes into `self`.
-    /// 
-    /// # Examples
-    /// 
-    /// ```
-    /// use genetic_optimization::prelude::*;
-    /// 
-    /// let mut genome = Genome::new(vec![("examples", "example1", Gene::default())]);
-    /// genome.insert_chromosomes(vec![("examples2", Chromosome::default()), ("examples3", Chromosome::default())]);
-    /// ```
     #[inline]
     pub fn insert_chromosomes(&mut self, chromos: Vec<(impl Into<String>, Chromosome)>) {
         for chromo in chromos {
@@ -163,15 +113,6 @@ impl Genome {
     }
 
     /// Inserts all given genes into `self`.
-    /// 
-    /// # Examples
-    /// 
-    /// ```
-    /// use genetic_optimization::prelude::*;
-    /// 
-    /// let mut genome = Genome::default()
-    /// genome.insert_genes(vec!["chromosome_label", "gene_label", Gene::default()]);
-    /// ```
     #[inline]
     pub fn insert_genes(&mut self, genes: Vec<(impl Into<String> + Clone, impl Into<String>, Gene)>) {
         for gene in genes {
@@ -184,16 +125,6 @@ impl Genome {
     }
 
     /// Sets the value of the specified chromosome.
-    /// 
-    /// # Examples
-    /// 
-    /// ```
-    /// use genetic_optimization::prelude::*;
-    /// 
-    /// let mut genome = Genome::new(vec![("examples", "example1", Gene::default())]);
-    /// let _ = genome.set_chromosome("examples", Chromosome::default());
-    /// assert!(genome.gene("examples", "example1").is_none());
-    /// ```
     #[inline]
     pub fn set_chromosome(&mut self, chromo_name: impl Into<String>, chromo: Chromosome) -> Result<(), String> {
         *self.chromosomes.get_mut(&chromo_name.into()).ok_or("No chromosome by that name exists")? = chromo;
@@ -202,16 +133,6 @@ impl Genome {
     }
 
     /// Sets the value of the specified gene.
-    /// 
-    /// # Examples
-    /// 
-    /// ```
-    /// use genetic_optimization::prelude::*;
-    /// 
-    /// let mut genome = Genome::new(vec![("examples", "example1", Gene::new(1.0))]);
-    /// let _ = genome.set_gene("examples", "example1", Gene::default());
-    /// assert_eq!(genome.gene("examples", "example1").unwrap().value(), 0.0);
-    /// ```
     #[inline]
     pub fn set_gene(&mut self, chromo_name: impl Into<String>, gene_name: impl Into<String>, gene: Gene) -> Result<(), impl Into<String>> {
         self.chromosomes.get_mut(&chromo_name.into()).ok_or("No chromosome by that name exists")?.set_gene(gene_name, gene)
