@@ -3,13 +3,17 @@ use rand::Rng;
 
 use crate::prelude::*;
 
+type Eval = fn(&Genome) -> f64;
+type EvalWithUtil = fn(&Genome, fn(&Vec<f64>) -> Vec<f64>) -> f64;
+type Util = fn(&Vec<f64>) -> Vec<f64>;
+
 #[derive(Clone, Default)]
 pub struct Simulation {
     genome: Option<Genome>,
     species_limit: usize,
     eval: Option<fn(&Genome) -> f64>,
-    eval_with_util: Option<fn(&Genome, fn(Vec<f64>) -> f64) -> f64>,
-    util: Option<fn(Vec<f64>) -> f64>,
+    eval_with_util: Option<fn(&Genome, fn(&Vec<f64>) -> Vec<f64>) -> f64>,
+    util: Option<fn(&Vec<f64>) -> Vec<f64>>,
     hyper_params: SimHyperParams,
     parallelism: Parallelism,
     print_settings: PrintSettings,
@@ -41,7 +45,7 @@ impl Simulation {
     /// # Panics
     /// Will panic if `self.eval_with_util()` has already been run.
     #[inline]
-    pub fn eval(&mut self, eval: fn(&Genome) -> f64) -> &mut Self {
+    pub fn eval(&mut self, eval: Eval) -> &mut Self {
         assert!(self.eval_with_util.is_none());
 
         self.eval = Some(eval);
@@ -53,7 +57,7 @@ impl Simulation {
     /// # Panics
     /// Will panic if `self.eval()` has already been run.
     #[inline]
-    pub fn eval_with_util(&mut self, eval: fn(&Genome, fn(Vec<f64>) -> f64) -> f64, util: fn(Vec<f64>) -> f64) -> &mut Self {
+    pub fn eval_with_util(&mut self, eval: EvalWithUtil, util: Util) -> &mut Self {
         assert!(self.eval.is_none());
 
         self.eval_with_util = Some(eval);
@@ -199,9 +203,9 @@ impl Parallelism {
     #[inline]
     fn is_multi(
         &self, 
-        eval: Option<fn(&Genome) -> f64>, 
-        eval_with_util: Option<fn(&Genome, fn(Vec<f64>) -> f64) -> f64>, 
-        util: Option<fn(Vec<f64>) -> f64>, 
+        eval: Option<Eval>, 
+        eval_with_util: Option<EvalWithUtil>, 
+        util: Option<Util>, 
         template: &Genome, 
         species_per_generation: usize
     ) -> bool 
@@ -272,9 +276,9 @@ impl Genome {
         &self, 
         generations: usize, 
         species_limit: usize, 
-        eval: Option<fn(&Genome) -> f64>, 
-        eval_with_util: Option<fn(&Genome, fn(Vec<f64>) -> f64) -> f64>,
-        util: Option<fn(Vec<f64>) -> f64>,
+        eval: Option<Eval>, 
+        eval_with_util: Option<EvalWithUtil>,
+        util: Option<Util>,
         hyper_params: SimHyperParams, 
         parallellism: Parallelism, 
         print: PrintSettings
@@ -288,9 +292,9 @@ impl Genome {
         &self, 
         mut generations: usize, 
         mut species_limit: usize, 
-        eval: Option<fn(&Genome) -> f64>, 
-        eval_with_util: Option<fn(&Genome, fn(Vec<f64>) -> f64) -> f64>,
-        util: Option<fn(Vec<f64>) -> f64>,
+        eval: Option<Eval>, 
+        eval_with_util: Option<EvalWithUtil>,
+        util: Option<Util>,
         hyper_params: SimHyperParams, 
         parallellism: Parallelism, 
         print: PrintSettings
@@ -425,7 +429,7 @@ impl Genome {
 }
 
 #[inline]
-fn sort_species(species: &mut Vec<Genome>, eval: fn(&Genome) -> f64) {
+fn sort_species(species: &mut Vec<Genome>, eval: Eval) {
     let (tx, rx)= mpsc::channel();
 
     for k in 0..species.len() {
@@ -449,7 +453,7 @@ fn sort_species(species: &mut Vec<Genome>, eval: fn(&Genome) -> f64) {
 }
 
 #[inline]
-fn sort_species_util(species: &mut Vec<Genome>, eval: fn(&Genome, fn(Vec<f64>) -> f64) -> f64, util: fn(Vec<f64>) -> f64) {
+fn sort_species_util(species: &mut Vec<Genome>, eval: EvalWithUtil, util: Util) {
     let (tx, rx)= mpsc::channel();
 
     for k in 0..species.len() {
