@@ -148,18 +148,18 @@ impl Simulation {
 
         // I have no idea why I can't just specify a type for None, so this is my workaround
         #[derive(Clone, Copy)]
-        pub struct Useless;
+        struct Useless;
         impl Util for Useless { fn gen_input() -> Vec<f64> { todo!() } fn evaluate(_: Option<&Vec<f64>>, _: &Vec<f64>) -> f64 { todo!() } }
 
-        fn none(_: &Genome, _: &Useless) -> f64 { 0.0 }
+        fn none(_: &Genome) -> f64 { 0.0 }
         let mut _foo = Some(none);
         _foo = None;
 
-        self.genome.clone().unwrap().sim(generations, self.species_limit, self.eval, &_foo, &None, self.hyper_params, self.parallelism, self.print_settings)
+        self.genome.clone().unwrap().sim(generations, self.species_limit, self.eval, &_foo, &None::<Useless>, self.hyper_params, self.parallelism, self.print_settings)
     }
 }
 
-impl<U: Util + Default + Send + Copy + 'static, F: Fn(&Genome, &U) -> f64 + Send + Copy + 'static> SimulationWithUtil<U, F> {
+impl<U: Util + Default + Send + Copy + 'static, F: Fn(&Genome) -> f64 + Send + Copy + 'static> SimulationWithUtil<U, F> {
     /// Creates a new `Simulation` that can be configured.
     #[inline]
     pub fn new() -> Self {
@@ -336,11 +336,10 @@ pub enum Parallelism {
 
 impl Parallelism {
     #[inline]
-    fn is_multi<U: Util + Send + Copy + 'static, F: Fn(&Genome, &U) -> f64 + Send + Copy + 'static>(
+    fn is_multi<U: Util + Send + Copy + 'static, F: Fn(&Genome) -> f64 + Send + Copy + 'static>(
         &self, 
         eval: Option<Eval>, 
-        eval_with_util: &Option<F>, 
-        util: &Option<U>, 
+        eval_with_util: &Option<F>,
         template: &Genome, 
         species_per_generation: usize
     ) -> bool 
@@ -357,7 +356,7 @@ impl Parallelism {
                 species.sort_by_cached_key(|x| (eval(x) * -1_000_000.0) as i64);
             }
             else {
-                species.sort_by_cached_key(|x| (eval_with_util.unwrap()(x, &util.unwrap()) * -1_000_000.0) as i64);
+                species.sort_by_cached_key(|x| (eval_with_util.unwrap()(x) * -1_000_000.0) as i64);
             }
 
             let time = inst.elapsed().as_nanos();
@@ -367,7 +366,7 @@ impl Parallelism {
                 sort_species(&mut species2, eval);
             }
             else {
-                sort_species_util(&mut species2, eval_with_util.unwrap(), util.unwrap());
+                sort_species_util::<U, F>(&mut species2, eval_with_util.unwrap());
             }
 
             let time2 = inst.elapsed().as_nanos();
@@ -406,7 +405,7 @@ impl Genome {
     /// The evaluator must be a function that takes a `Genome` with the same structure as `self` and returns a score (the greater, the better).
     #[deprecated = "Use `Simulation::new()` instead"]
     #[inline]
-    pub fn simulate<U: Util + Send + Copy + 'static, F: Fn(&Genome, &U) -> f64 + Send + Copy + 'static>(
+    pub fn simulate<U: Util + Send + Copy + 'static, F: Fn(&Genome) -> f64 + Send + Copy + 'static>(
         &self, 
         generations: usize, 
         species_limit: usize, 
@@ -422,7 +421,7 @@ impl Genome {
     }
 
     #[inline]
-    pub fn sim<U: Util + Send + Copy + 'static, F: Fn(&Genome, &U) -> f64 + Send + Copy + 'static>(
+    pub fn sim<U: Util + Send + Copy + 'static, F: Fn(&Genome) -> f64 + Send + Copy + 'static>(
         &self, 
         mut generations: usize, 
         mut species_limit: usize, 
@@ -445,7 +444,7 @@ impl Genome {
         // Parallelism
         let inst = Instant::now();
         if parallellism == Parallelism::Auto && print == PrintSettings::PrintFull { println!("Determining parallelism option..."); }
-        let multi = parallellism.is_multi(eval, eval_with_util, util, self, hyper_params.species_per_generation());
+        let multi = parallellism.is_multi::<U, F>(eval, eval_with_util, self, hyper_params.species_per_generation());
         if parallellism == Parallelism::Auto && print == PrintSettings::PrintFull { 
             if multi {
                 println!("Option `Multi` chosen after {}s", inst.elapsed().as_secs_f32());
@@ -469,13 +468,13 @@ impl Genome {
                 else { species.sort_by_cached_key(|x| (eval(x) * -1_000_000.0) as i64); }
             }
             else {
-                if multi { sort_species_util(&mut species, eval_with_util.unwrap(), util.unwrap()); }
-                else { species.sort_by_cached_key(|x| (eval_with_util.unwrap()(x, &util.unwrap()) * -1_000_000.0) as i64); }
+                if multi { sort_species_util::<U, F>(&mut species, eval_with_util.unwrap()); }
+                else { species.sort_by_cached_key(|x| (eval_with_util.unwrap()(x) * -1_000_000.0) as i64); }
             }
 
             // Printing
             if let Some(eval) = eval { if print.print_scores() { println!("Generation: {i}, Score: {}", eval(&species[0])); }}
-            else { if print.print_scores() { println!("Generation: {i}, Score: {}", eval_with_util.unwrap()(&species[0], &util.unwrap())); }}
+            else { if print.print_scores() { println!("Generation: {i}, Score: {}", eval_with_util.unwrap()(&species[0])); }}
 
             // Elitism
             for j in 0..hyper_params.species_per_generation() {
@@ -518,13 +517,13 @@ impl Genome {
             else { species.sort_by_cached_key(|x| (eval(x) * -1_000_000.0) as i64); }
         }
         else {
-            if multi { sort_species_util(&mut species, eval_with_util.unwrap(), util.unwrap()); }
-            else { species.sort_by_cached_key(|x| (eval_with_util.unwrap()(x, &util.unwrap()) * -1_000_000.0) as i64); }
+            if multi { sort_species_util::<U, F>(&mut species, eval_with_util.unwrap()); }
+            else { species.sort_by_cached_key(|x| (eval_with_util.unwrap()(x) * -1_000_000.0) as i64); }
         }
 
         // Printing
         if let Some(eval) = eval { if print.print_scores() { println!("Generation: {}, Score: {}", generations + 1, eval(&species[0])); }}
-        else { if print.print_scores() { println!("Generation: {}, Score: {}", generations + 1, eval_with_util.unwrap()(&species[0], &util.unwrap())); }}
+        else { if print.print_scores() { println!("Generation: {}, Score: {}", generations + 1, eval_with_util.unwrap()(&species[0])); }}
         
         species[0].clone()
     }
@@ -587,7 +586,7 @@ fn sort_species(species: &mut Vec<Genome>, eval: Eval) {
 }
 
 #[inline]
-fn sort_species_util<U: Util + Send + Copy + 'static, F: Fn(&Genome, &U) -> f64 + Send + Copy + 'static>(species: &mut Vec<Genome>, eval: F, util: U) {
+fn sort_species_util<U: Util + Send + Copy + 'static, F: Fn(&Genome) -> f64 + Send + Copy + 'static>(species: &mut Vec<Genome>, eval: F) {
     let (tx, rx)= mpsc::channel();
 
     for k in 0..species.len() {
@@ -595,7 +594,7 @@ fn sort_species_util<U: Util + Send + Copy + 'static, F: Fn(&Genome, &U) -> f64 
         let spec = species[k].clone();
 
         thread::spawn(move || {
-            thread_tx.send((k, eval(&spec, &util))).unwrap();
+            thread_tx.send((k, eval(&spec))).unwrap();
         });
     }
 
