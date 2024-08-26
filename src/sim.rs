@@ -5,12 +5,14 @@ use crate::prelude::*;
 
 type Eval = fn(&Genome) -> f64;
 
+/// Optional object to help implementing the evaluation function.
 pub trait Util {
     fn gen_input() -> Vec<f64>;
 
     fn evaluate(input: Option<&Vec<f64>>, output: &Vec<f64>) -> f64;
 }
 
+/// Object used to run genetic simulation.
 #[derive(Clone, Default)]
 pub struct Simulation {
     genome: Option<Genome>,
@@ -21,6 +23,7 @@ pub struct Simulation {
     print_settings: PrintSettings,
 }
 
+/// Similar to `Simulation` but uses the `Util` object for evaluation.
 #[derive(Clone, Default)]
 pub struct SimulationWithUtil<U, F> {
     genome: Option<Genome>,
@@ -326,6 +329,7 @@ impl Default for SimHyperParams {
     }
 }
 
+/// Parallelism mode.
 #[derive(Clone, Copy, Debug, Default, PartialEq, PartialOrd)]
 pub enum Parallelism {
     Single,
